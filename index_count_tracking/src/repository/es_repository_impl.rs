@@ -2,12 +2,9 @@ use crate::common::*;
 
 use crate::utils_modules::io_utils::*;
 
-use crate::model::configs::{
-    elastic_server_config::*, total_config::*
-};
+use crate::model::configs::{elastic_server_config::*, total_config::*};
 
 use crate::traits::repository_traits::es_repository::*;
-
 
 #[derive(Debug, Getters, Clone)]
 pub struct EsRepositoryImpl {
@@ -21,18 +18,18 @@ pub(crate) struct EsClient {
 
 impl EsRepositoryImpl {
     pub fn new(es_config: &ElasticServerConfig) -> Result<Self, anyhow::Error> {
-        
         let mut es_clients: Vec<EsClient> = Vec::new();
-        
+
         for url in &es_config.elastic_host {
-            
-            let parse_url: String = if let (Some(id), Some(pw)) = (es_config.elastic_id.as_deref(), es_config.elastic_pw.as_deref())
-            {
+            let parse_url: String = if let (Some(id), Some(pw)) = (
+                es_config.elastic_id.as_deref(),
+                es_config.elastic_pw.as_deref(),
+            ) {
                 format!("http://{}:{}@{}", id, encode(pw), url)
             } else {
                 format!("http://{}", url)
             };
-            
+
             let es_url: Url = Url::parse(&parse_url)?;
             let conn_pool: SingleNodeConnectionPool = SingleNodeConnectionPool::new(es_url);
             let transport: EsTransport = TransportBuilder::new(conn_pool)
@@ -125,7 +122,7 @@ impl EsRepository for EsRepositoryImpl {
     async fn post_query(&self, document: &Value, index_name: &str) -> Result<(), anyhow::Error> {
         let response = self
             .execute_on_any_node(|es_client| async move {
-                let response = es_client
+                let response: Response = es_client
                     .es_conn
                     .index(IndexParts::Index(index_name))
                     .body(document)
@@ -139,7 +136,10 @@ impl EsRepository for EsRepositoryImpl {
         if response.status_code().is_success() {
             Ok(())
         } else {
-            let error_message = format!("[Elasticsearch Error][node_post_query()] Failed to index document: Status Code: {}", response.status_code());
+            let error_message = format!(
+                "[Elasticsearch Error][node_post_query()] Failed to index document: Status Code: {}",
+                response.status_code()
+            );
             Err(anyhow!(error_message))
         }
     }
@@ -166,7 +166,11 @@ impl EsRepository for EsRepositoryImpl {
         if response.status_code().is_success() {
             Ok(())
         } else {
-            let error_message = format!("[Elasticsearch Error][node_delete_query()] Failed to delete document: Status Code: {}, Document ID: {}", response.status_code(), doc_id);
+            let error_message = format!(
+                "[Elasticsearch Error][node_delete_query()] Failed to delete document: Status Code: {}, Document ID: {}",
+                response.status_code(),
+                doc_id
+            );
             Err(anyhow!(error_message))
         }
     }

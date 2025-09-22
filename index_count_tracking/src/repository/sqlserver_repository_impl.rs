@@ -1,10 +1,6 @@
 use crate::common::*;
 
-use crate::env_configuration::env_config::*;
-
-use crate::model::configs::rdb_config::*;
-
-use crate::utils_modules::io_utils::*;
+use crate::model::configs::{rdb_config::*, total_config::*};
 
 use crate::traits::repository_traits::sqlserver_repository::*;
 
@@ -22,14 +18,7 @@ pub struct SqlServerRepositoryImpl {
 fn initialize_sqlserver_client() -> Arc<SqlServerRepositoryImpl> {
     info!("initialize_sqlserver_client() START!");
 
-    /* TOML 로딩 */
-    // let rdb_config: RdbConfig = read_toml_from_file::<RdbConfig>(&SQL_SERVER_INFO_PATH)
-    //     .unwrap_or_else(|_| {
-    //         let err_msg: &str =
-    //             "[ERROR][initialize_sqlserver_client()] Cannot read RdbConfig object.";
-    //         error!("{}", err_msg);
-    //         panic!("{}", err_msg)
-    //     });
+    let rdb_config: &'static RdbConfig = get_sqlserver_config_info();
 
     let conn_str: String = format!(
         "Server={},{};Database={};User Id={};Password={};TrustServerCertificate=true;",

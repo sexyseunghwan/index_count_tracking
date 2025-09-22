@@ -1,16 +1,14 @@
 use crate::common::*;
 
 use crate::model::configs::{
-    elastic_server_config::*, rdb_config::*,
-    telegram_config::*, system_config::*
+    elastic_server_config::*, rdb_config::*, system_config::*, telegram_config::*,
 };
 
 use crate::utils_modules::io_utils::*;
 
 use crate::env_configuration::env_config::*;
 
-static TOTAL_CONFIG: once_lazy<TotalConfig> = 
-    once_lazy::new(|| initialize_server_config());
+static TOTAL_CONFIG: once_lazy<TotalConfig> = once_lazy::new(|| initialize_server_config());
 
 #[doc = "Function to initialize Server configuration information instances"]
 pub fn initialize_server_config() -> TotalConfig {
@@ -25,7 +23,7 @@ pub struct TotalConfig {
     pub mon_elasticsearch: ElasticServerConfig,
     pub sqlserver: RdbConfig,
     pub telegram: TelegramConfig,
-    pub system: SystemConfig
+    pub system: SystemConfig,
 }
 
 #[doc = "Elasticsearch config 정보"]
@@ -38,6 +36,20 @@ pub fn get_mon_elastic_config_info() -> &'static ElasticServerConfig {
     &TOTAL_CONFIG.mon_elasticsearch
 }
 
+#[doc = "알람용 Telegram 정보"]
+pub fn get_telegram_config_info() -> &'static TelegramConfig {
+    &TOTAL_CONFIG.telegram
+}
+
+#[doc = "Sql Server 설정 정보"]
+pub fn get_sqlserver_config_info() -> &'static RdbConfig {
+    &TOTAL_CONFIG.sqlserver
+}
+
+#[doc = "system 설정 정보"]
+pub fn get_system_config_info() -> &'static SystemConfig {
+    &TOTAL_CONFIG.system
+}
 
 impl TotalConfig {
     fn new() -> Self {

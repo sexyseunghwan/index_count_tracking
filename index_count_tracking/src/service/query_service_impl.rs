@@ -1,13 +1,19 @@
 use crate::common::*;
 
-use crate::traits::{
-    repository_traits::es_repository::*, service_traits::query_service::*,
-};
+use crate::traits::{repository_traits::es_repository::*, service_traits::query_service::*};
 
 use crate::repository::es_repository_impl::*;
 
-use crate::utils_modules::time_utils::*;
-use crate::utils_modules::traits::*;
+// use crate::utils_modules::time_utils::*;
+use crate::utils_modules::{
+    traits::*,
+    time_utils::*
+};
+
+use crate::model::{
+    index::{alert_index::*, index_config::*},
+    alarm::alarm_index_infos::*
+};
 
 // use crate::model::{
 //     error_alarm_info::*, error_alarm_info_format::*, vector_index_log::*,
@@ -16,7 +22,7 @@ use crate::utils_modules::traits::*;
 
 #[derive(Debug, new)]
 pub struct QueryServiceImpl {
-    es_conn: EsRepositoryImpl
+    es_conn: EsRepositoryImpl,
 }
 
 impl QueryServiceImpl {
@@ -123,6 +129,103 @@ impl QueryServiceImpl {
 
 #[async_trait]
 impl QueryService for QueryServiceImpl {
+    #[doc = "특정 인덱스의 총 문서 개수 반환해주는 함수"]
+    async fn get_index_doc_count(&self, index_name: &str) -> anyhow::Result<usize> {
+        let query: Value = json!({
+            "size": 0,                     /* 문서 본문은 받지 않음 */
+            "track_total_hits": true,      /* 정확한 총건수 계산 */
+            "query": { "match_all": {} }
+        });
+
+        let resp: Value = self.es_conn.get_search_query(&query, index_name).await?;
+
+        let hits_total: &Value = &resp["hits"]["total"];
+
+        let value: usize = hits_total["value"]
+            .as_i64()
+            .ok_or_else(|| anyhow::anyhow!("[QueryServiceImpl->get_index_doc_count] invalid hits.total.value in search response"))?
+            .try_into()?;
+
+        Ok(value)
+    }
+
+    #[doc = "로그 인덱스를 색인해주는 함수"]
+    async fn post_log_index(&self, index_name: &str, alert_index: &AlertIndex) -> anyhow::Result<()> {
+        
+        self.es_conn.post_query_struct(alert_index, index_name).await
+            .unwrap_or_else(|e| {
+                error!("[QueryServiceImpl->post_log_index] {:?}", e);
+            });
+        
+        Ok(())
+    }
+    
+    #[doc = ""]
+    async fn get_max_cnt_from_log_index(&self, index_config: &IndexConfig, cur_timestamp_utc: &str) -> anyhow::Result<()> {
+
+        let index_name: &str = index_config.index_name();
+        let allowable_fluctuation_range: usize = *index_config.allowable_fluctuation_range();
+        let agg_term: i64 = *index_config.agg_term_sec();
+        
+        let prev_timestamp_utc: String = calc_time_window(cur_timestamp_utc, agg_term)?;
+
+        let max_query: Value = json!({
+            "size": 0,
+            "track_total_hits": false,
+            "query": {
+                "range": {
+                    "timestamp": {
+                        "gte": prev_timestamp_utc,
+                        "lte": cur_timestamp_utc
+                    }
+                },
+                "aggs": {
+                    "max_value_in_range": {
+                        "max": {
+                            "field": "cnt"
+                        }
+                    }
+                }
+            }
+        });
+
+        let max_resp: Value = self.es_conn.get_search_query(&max_query, index_name).await?;
+        let maybe_max_val: f64 = max_resp["aggregations"]["max_value_in_range"]["value"].as_f64().unwrap_or(0.0);
+
+
+        let min_query: Value = json!({
+            "size": 0,
+            "track_total_hits": false,
+            "query": {
+                "range": {
+                    "timestamp": {
+                        "gte": prev_timestamp_utc,
+                        "lte": cur_timestamp_utc
+                    }
+                },
+                "aggs": {
+                    "min_value_in_range": {
+                        "min": {
+                            "field": "cnt"
+                        }
+                    }
+                }
+            }
+        });
+
+
+        let min_resp: Value = self.es_conn.get_search_query(&max_query, index_name).await?;
+        let maybe_min_val: f64 = max_resp["aggregations"]["max_value_in_range"]["value"].as_f64().unwrap_or(0.0);
+        
+        let fluctuation_val: f64 = if maybe_min_val > 0.0 {
+            ((maybe_max_val - maybe_min_val) / maybe_min_val) * 100.0
+        } else {
+            0.0  
+        };
+        
+        Ok(())
+    }
+
     // #[doc = "색인 동작 로그를 가져오는 함수"]
     // /// # Arguments
     // /// * `query_index` - 쿼리의 대상이 되는 Elasticsearch 인덱스 이름
@@ -143,7 +246,7 @@ impl QueryService for QueryServiceImpl {
     // ) -> Result<VectorIndexLogFormat, anyhow::Error> {
     //     let start_dt_str: String = get_str_from_naive_datetime(start_dt, "%Y-%m-%dT%H:%M:%SZ")?;
     //     let end_dt_str: String = get_str_from_naive_datetime(end_dt, "%Y-%m-%dT%H:%M:%SZ")?;
-        
+
     //     let query: Value = json!({
     //         "size": 1,                       /* 최신 한 건만 */
     //         "track_total_hits": false,       /* 총건수 집계 불필요 - 성능상 좋음 */

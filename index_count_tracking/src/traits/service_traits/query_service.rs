@@ -1,5 +1,14 @@
 use crate::common::*;
 
+use crate::model::{
+    index::{alert_index::*, index_config::*},
+    alarm::alarm_index_infos::*
+};
+
+
+use crate::model::{
+    index::alert_index::*
+};
 
 // use crate::model::error_alarm_info::*;
 // use crate::model::error_alarm_info_format::*;
@@ -7,6 +16,11 @@ use crate::common::*;
 
 #[async_trait]
 pub trait QueryService {
+    async fn get_index_doc_count(&self, index_name: &str) -> anyhow::Result<usize>;
+    async fn post_log_index(&self, index_name: &str, alert_index: &AlertIndex) -> anyhow::Result<()>;
+    //async fn get_max_cnt_from_log_index(&self, index_config: &IndexConfig, cur_timestamp_utc: &str) -> anyhow::Result<AlaramIndexInfo>;
+    async fn get_max_cnt_from_log_index(&self, index_config: &IndexConfig, cur_timestamp_utc: &str) -> anyhow::Result<()>;
+    
     // async fn get_indexing_movement_log(
     //     &self,
     //     query_index: &str,

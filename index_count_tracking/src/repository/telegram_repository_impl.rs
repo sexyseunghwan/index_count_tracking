@@ -1,8 +1,6 @@
 use crate::common::*;
 
-use crate::model::configs::{
-    telegram_config::*
-};
+use crate::model::configs::{telegram_config::*, total_config::*};
 
 use crate::traits::repository_traits::telegram_repository::*;
 
@@ -11,11 +9,10 @@ static TELEGRAM_REPO: once_lazy<Arc<TelebotRepositoryImpl>> =
     once_lazy::new(initialize_tele_bot_client);
 
 #[doc = "Telebot 을 전역적으로 초기화 함."]
-pub fn initialize_tele_bot_client() -> Arc<TelebotRepositoryImpl> {
+fn initialize_tele_bot_client() -> Arc<TelebotRepositoryImpl> {
     info!("initialize_tele_bot_client() START!");
 
-    let telegram_config: Arc<TelegramConfig> =
-        get_telegram_config_info();
+    let telegram_config: &TelegramConfig = get_telegram_config_info();
     let bot_token: &String = telegram_config.bot_token();
     let chat_room_id: &String = telegram_config.chat_room_id();
 
@@ -64,16 +61,18 @@ impl TelebotRepository for TelebotRepositoryImpl {
                 }
                 Err(err) => {
                     error!(
-                       "[Timeout Error][bot_send()] Attempt {} failed: {}. Retrying in 10 seconds.",
-                       try_cnt + 1,
-                       err
-                   );
+                        "[Timeout Error][bot_send()] Attempt {} failed: {}. Retrying in 10 seconds.",
+                        try_cnt + 1,
+                        err
+                    );
                     sleep(Duration::from_secs(10)).await;
                 }
             }
         }
 
-        Err(anyhow!("[Timeout Error][bot_send()] Failed to send message after 3 attempts to the Telegram bot."))
+        Err(anyhow!(
+            "[Timeout Error][bot_send()] Failed to send message after 3 attempts to the Telegram bot."
+        ))
     }
 
     #[doc = "메시지를 직접 보내주는 함수"]
