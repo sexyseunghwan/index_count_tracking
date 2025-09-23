@@ -7,5 +7,5 @@ use crate::model::index::alert_index_format::*;
 pub struct LogIndexResult {
     pub index_name: String,
     pub alert_yn: bool,
-    pub alert_index_format: Option<AlertIndexFormat>,
+    pub alert_index_format: Option<Vec<AlertIndexFormat>>,
 }

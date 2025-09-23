@@ -37,11 +37,11 @@ impl QueryServiceImpl {
             .get("hits")
             .and_then(|h| h.get("hits"))
             .ok_or_else(|| {
-                anyhow!("[QueryServicePub->get_query_result_vec] Missing 'hits.hits' field")
+                anyhow!("[QueryServiceImpl->get_query_result_vec] Missing 'hits.hits' field")
             })?;
 
         let arr: &Vec<Value> = hits.as_array().ok_or_else(|| {
-            anyhow!("[QueryServicePub->get_query_result_vec] 'hits.hits' is not an array")
+            anyhow!("[QueryServiceImpl->get_query_result_vec] 'hits.hits' is not an array")
         })?;
 
         /* ID + source 역직렬화 → T 로 변환 */
@@ -53,18 +53,18 @@ impl QueryServiceImpl {
                     .get("_id")
                     .and_then(|v| v.as_str())
                     .ok_or_else(|| {
-                        anyhow!("[QueryServicePub->get_query_result_vec] Missing or invalid '_id'")
+                        anyhow!("[QueryServiceImpl->get_query_result_vec] Missing or invalid '_id'")
                     })?
                     .to_string();
 
                 /* 2) source 역직렬화 */
                 let src_val: &Value = hit.get("_source").ok_or_else(|| {
-                    anyhow!("[QueryServicePub->get_query_result_vec] Missing '_source'")
+                    anyhow!("[QueryServiceImpl->get_query_result_vec] Missing '_source'")
                 })?;
 
                 let source: S = serde_json::from_value(src_val.clone()).map_err(|e| {
                     anyhow!(
-                        "[QueryServicePub->get_query_result_vec] Failed to deserialize source: {}",
+                        "[QueryServiceImpl->get_query_result_vec] Failed to deserialize source: {}",
                         e
                     )
                 })?;
@@ -91,30 +91,30 @@ impl QueryServiceImpl {
             .get("hits")
             .and_then(|h| h.get("hits"))
             .ok_or_else(|| {
-                anyhow!("[QueryServicePub->get_query_result] Missing 'hits.hits' field")
+                anyhow!("[QueryServiceImpl->get_query_result] Missing 'hits.hits' field")
             })?;
 
         let arr: &Vec<Value> = hits.as_array().ok_or_else(|| {
-            anyhow!("[QueryServicePub->get_query_result] 'hits.hits' is not an array")
+            anyhow!("[QueryServiceImpl->get_query_result] 'hits.hits' is not an array")
         })?;
 
         let first_hit: &Value = arr
             .first()
-            .ok_or_else(|| anyhow!("[QueryServicePub->get_query_result] hits array is empty"))?;
+            .ok_or_else(|| anyhow!("[QueryServiceImpl->get_query_result] hits array is empty"))?;
 
         let id: String = first_hit
             .get("_id")
             .and_then(|v| v.as_str())
-            .ok_or_else(|| anyhow!("[QueryServicePub->get_query_result] Missing or invalid '_id'"))?
+            .ok_or_else(|| anyhow!("[QueryServiceImpl->get_query_result] Missing or invalid '_id'"))?
             .to_string();
 
         let src_val: &Value = first_hit
             .get("_source")
-            .ok_or_else(|| anyhow!("[QueryServicePub->get_query_result] Missing '_source'"))?;
+            .ok_or_else(|| anyhow!("[QueryServiceImpl->get_query_result] Missing '_source'"))?;
 
         let source: S = serde_json::from_value(src_val.clone()).map_err(|e| {
             anyhow!(
-                "[QueryServicePub->get_query_result] Failed to deserialize source: {}",
+                "[QueryServiceImpl->get_query_result] Failed to deserialize source: {}",
                 e
             )
         })?;
@@ -204,25 +204,25 @@ impl QueryService for QueryServiceImpl {
     }
 
     #[doc = r#"
-    주어진 인덱스 설정(`IndexConfig`)과 기준 시각(`cur_timestamp_utc`)을 바탕으로
-    이전 agg_term_sec 동안의 문서 수(`cnt`) 변동을 계산한다.
+        주어진 인덱스 설정(`IndexConfig`)과 기준 시각(`cur_timestamp_utc`)을 바탕으로
+        이전 agg_term_sec 동안의 문서 수(`cnt`) 변동을 계산한다.
 
-    1. `calc_time_window`를 통해 (기준시각 - agg_term_sec) ~ 기준시각 범위를 산출
-    2. 해당 구간에서 `cnt` 필드의 최대/최소 값을 Elasticsearch 집계(`max`, `min`)로 조회
-    3. 최소값을 기준으로 변화율(%)을 계산
-    4. 변화율이 허용치(`allowable_fluctuation_range`) 이상이면,
-    - 구간 내 데이터를 추가 조회하여 `AlertIndexFormat`으로 변환
-    - 이를 포함한 `LogIndexResult`를 반환
-    5. 변화율이 허용치 미만이면 `alert_info`가 None인 `LogIndexResult` 반환
+        1. `calc_time_window`를 통해 (기준시각 - agg_term_sec) ~ 기준시각 범위를 산출
+        2. 해당 구간에서 `cnt` 필드의 최대/최소 값을 Elasticsearch 집계(`max`, `min`)로 조회
+        3. 최소값을 기준으로 변화율(%)을 계산
+        4. 변화율이 허용치(`allowable_fluctuation_range`) 이상이면,
+        - 구간 내 데이터를 추가 조회하여 `AlertIndexFormat`으로 변환
+        - 이를 포함한 `LogIndexResult`를 반환
+        5. 변화율이 허용치 미만이면 `alert_info`가 None인 `LogIndexResult` 반환
 
-    # Arguments
-    * `mon_index_name` - 모니터링 정보를 가지고 있는 인덱스 이름
-    * `index_config` - 모니터링 대상 인덱스 설정 (허용변동범위, 집계주기 포함)
-    * `cur_timestamp_utc` - 기준 시각 (UTC, "%Y-%m-%dT%H:%M:%SZ" 포맷)
+        # Arguments
+        * `mon_index_name` - 모니터링 정보를 가지고 있는 인덱스 이름
+        * `index_config` - 모니터링 대상 인덱스 설정 (허용변동범위, 집계주기 포함)
+        * `cur_timestamp_utc` - 기준 시각 (UTC, "%Y-%m-%dT%H:%M:%SZ" 포맷)
 
-    # Returns
-    * `LogIndexResult` - 인덱스명, 정상여부, (조건 충족 시) AlertIndexFormat 포함
-    * `anyhow::Error` - ES 조회 실패 또는 파싱 실패 시
+        # Returns
+        * `LogIndexResult` - 인덱스명, 정상여부, (조건 충족 시) AlertIndexFormat 포함
+        * `anyhow::Error` - ES 조회 실패 또는 파싱 실패 시
     "#]
     async fn get_max_cnt_from_log_index(
         &self,
@@ -271,33 +271,45 @@ impl QueryService for QueryServiceImpl {
 
         let mut result: LogIndexResult = LogIndexResult::new(index_name.to_string(), true, None);
 
-        /* 4) 임계 초과 시 상세 샘플 1건(혹은 원하는 수) 조회해서 첨부 */
+        /* 4) 임계 초과 시 상세 샘플 조회해서 첨부 */
         let search_query: Value = json!({
             "query": {
-                "range": {
-                    "timestamp": {
-                        "gte": prev_timestamp_utc,
-                        "lte": cur_timestamp_utc
-                    }
+                "bool": {
+                    "filter": [
+                        {
+                            "range": {
+                                "timestamp": { "gte": prev_timestamp_utc, "lte": cur_timestamp_utc }
+                            }
+                        },
+                        {
+                            "term": {
+                                "index_name.keyword": index_name
+                            }
+                        }
+                    ]
                 }
             },
-            "size": 1,
             "sort": [{ "timestamp": { "order": "desc" } }]
         });
-
-        let response_body: Value = self
-            .es_conn
-            .get_search_query(&search_query, mon_index_name)
-            .await?;
+        
+        //AlertIndexFormat
+        let response_body: Value = self.es_conn.get_search_query(&search_query, mon_index_name).await?;
+        let test: Vec<AlertIndexFormat> = self.get_query_result_vec::<AlertIndexFormat, AlertIndex>(&response_body)?;
         
         // match self.get_query_result::<AlertIndexFormat, AlertIndex>(&response_body) {
-        //         Ok(alert_index_format) => {
-        //             result = LogIndexResult::new(index_name.to_string(), true, Some(alert_index_format));
-        //         },
-        //         Err(e) => {
-        //             error!("[QueryServiceImpl->get_max_cnt_from_log_index] {:?}", e);
-        //         }
-        //     };
+        //     Ok(alert_index_format) => {
+        //         result = LogIndexResult::new(index_name.to_string(), true, Some(alert_index_format));
+        //     },
+        //     Err(e) => {
+        //         error!("[QueryServiceImpl->get_max_cnt_from_log_index] {:?}", e);
+        //     }
+        // }
+        
+        //     let response_body: Value = es_client.get_search_query(&query, index_name).await?;
+        //     let err_alram_infos: Vec<ErrorAlarmInfoFormat> =
+        //         self.get_query_result_vec::<ErrorAlarmInfoFormat, ErrorAlarmInfo>(&response_body)?;
+
+        // result = LogIndexResult::new(index_name.to_string(), true, Some(alert_index_format));
         
         // 아래가 진짜 적용되어야 할 것
         // if fluctuation_val >= allowable {

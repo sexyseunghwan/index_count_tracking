@@ -29,7 +29,7 @@ impl<N: NotificationService, TQ: QueryService, MQ: QueryService> MainController<
         /* 1. 인덱스 문서 개수 정보 저장 */
         self.save_index_cnt_infos(&index_list, mon_index_name)
             .await?;
-
+        
         /* 2. 인덱스 문서 개수 검증 */
         let index_doc_verification: Vec<LogIndexResult> = self.verify_index_cnt(mon_index_name, &index_list).await?;
         
