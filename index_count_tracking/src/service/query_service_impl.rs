@@ -5,15 +5,11 @@ use crate::traits::{repository_traits::es_repository::*, service_traits::query_s
 use crate::repository::es_repository_impl::*;
 
 // use crate::utils_modules::time_utils::*;
-use crate::utils_modules::{
-    traits::*,
-    time_utils::*
-};
+use crate::utils_modules::{time_utils::*, traits::*};
 
-use crate::model::{
-    index::{alert_index::*, index_config::*},
-    alarm::alarm_index_infos::*
-};
+use crate::model::index::{alert_index::*, alert_index_format::*, index_config::*};
+
+use crate::dto::log_index_result::*;
 
 // use crate::model::{
 //     error_alarm_info::*, error_alarm_info_format::*, vector_index_log::*,
@@ -125,6 +121,35 @@ impl QueryServiceImpl {
 
         Ok(T::from_search_hit(id, source))
     }
+
+    #[doc = "주어진 시간 범위(gte~lte)에 대해 단일 집계 값을 f64로 받아오는 헬퍼"]
+    async fn fetch_agg_value_f64(
+        &self,
+        index_name: &str,
+        gte: &str,
+        lte: &str,
+        agg_name: &str,
+        agg_body: Value,
+    ) -> anyhow::Result<Option<f64>> {
+        let query: Value = json!({
+            "size": 0,
+            "query": {
+                "range": {
+                    "timestamp": { "gte": gte, "lte": lte }
+                }
+            },
+            "aggs": {
+                agg_name: agg_body
+            }
+        });
+
+        let resp: Value = self.es_conn.get_search_query(&query, index_name).await?;
+        let v: Option<f64> = resp["aggregations"][agg_name]["value"].as_f64();
+
+        /* NaN/무한대 방어 */
+        let v: Option<f64> = v.and_then(|x| if x.is_finite() { Some(x) } else { None });
+        Ok(v)
+    }
 }
 
 #[async_trait]
@@ -150,80 +175,111 @@ impl QueryService for QueryServiceImpl {
     }
 
     #[doc = "로그 인덱스를 색인해주는 함수"]
-    async fn post_log_index(&self, index_name: &str, alert_index: &AlertIndex) -> anyhow::Result<()> {
-        
-        self.es_conn.post_query_struct(alert_index, index_name).await
+    async fn post_log_index(
+        &self,
+        index_name: &str,
+        alert_index: &AlertIndex,
+    ) -> anyhow::Result<()> {
+        self.es_conn
+            .post_query_struct(alert_index, index_name)
+            .await
             .unwrap_or_else(|e| {
                 error!("[QueryServiceImpl->post_log_index] {:?}", e);
             });
-        
+
         Ok(())
     }
-    
-    #[doc = ""]
-    async fn get_max_cnt_from_log_index(&self, index_config: &IndexConfig, cur_timestamp_utc: &str) -> anyhow::Result<()> {
 
+    #[doc = r#"
+    주어진 인덱스 설정(`IndexConfig`)과 기준 시각(`cur_timestamp_utc`)을 바탕으로
+    이전 agg_term_sec 동안의 문서 수(`cnt`) 변동을 계산한다.
+
+    1. `calc_time_window`를 통해 (기준시각 - agg_term_sec) ~ 기준시각 범위를 산출
+    2. 해당 구간에서 `cnt` 필드의 최대/최소 값을 Elasticsearch 집계(`max`, `min`)로 조회
+    3. 최소값을 기준으로 변화율(%)을 계산
+    4. 변화율이 허용치(`allowable_fluctuation_range`) 이상이면,
+    - 구간 내 데이터를 추가 조회하여 `AlertIndexFormat`으로 변환
+    - 이를 포함한 `LogIndexResult`를 반환
+    5. 변화율이 허용치 미만이면 `alert_info`가 None인 `LogIndexResult` 반환
+
+    # Arguments
+    * `index_config` - 모니터링 대상 인덱스 설정 (허용변동범위, 집계주기 포함)
+    * `cur_timestamp_utc` - 기준 시각 (UTC, "%Y-%m-%dT%H:%M:%SZ" 포맷)
+
+    # Returns
+    * `LogIndexResult` - 인덱스명, 정상여부, (조건 충족 시) AlertIndexFormat 포함
+    * `anyhow::Error` - ES 조회 실패 또는 파싱 실패 시
+    "#]
+    async fn get_max_cnt_from_log_index(
+        &self,
+        index_config: &IndexConfig,
+        cur_timestamp_utc: &str,
+    ) -> anyhow::Result<LogIndexResult> {
         let index_name: &str = index_config.index_name();
-        let allowable_fluctuation_range: usize = *index_config.allowable_fluctuation_range();
+        let allowable: f64 = *index_config.allowable_fluctuation_range();
         let agg_term: i64 = *index_config.agg_term_sec();
-        
+
         let prev_timestamp_utc: String = calc_time_window(cur_timestamp_utc, agg_term)?;
 
-        let max_query: Value = json!({
-            "size": 0,
-            "track_total_hits": false,
-            "query": {
-                "range": {
-                    "timestamp": {
-                        "gte": prev_timestamp_utc,
-                        "lte": cur_timestamp_utc
-                    }
-                },
-                "aggs": {
-                    "max_value_in_range": {
-                        "max": {
-                            "field": "cnt"
-                        }
-                    }
-                }
-            }
-        });
+        /* 1) 윈도우 내 max(cnt) */
+        let maybe_max_val: f64 = self
+            .fetch_agg_value_f64(
+                index_name,
+                &prev_timestamp_utc,
+                cur_timestamp_utc,
+                "max_value_in_range",
+                json!({ "max": { "field": "cnt" } }),
+            )
+            .await?
+            .unwrap_or(0.0);
 
-        let max_resp: Value = self.es_conn.get_search_query(&max_query, index_name).await?;
-        let maybe_max_val: f64 = max_resp["aggregations"]["max_value_in_range"]["value"].as_f64().unwrap_or(0.0);
+        /* 2) 윈도우 내 min(cnt) */
+        let maybe_min_val: f64 = self
+            .fetch_agg_value_f64(
+                index_name,
+                &prev_timestamp_utc,
+                cur_timestamp_utc,
+                "min_value_in_range",
+                json!({ "min": { "field": "cnt" } }),
+            )
+            .await?
+            .unwrap_or(0.0);
 
-
-        let min_query: Value = json!({
-            "size": 0,
-            "track_total_hits": false,
-            "query": {
-                "range": {
-                    "timestamp": {
-                        "gte": prev_timestamp_utc,
-                        "lte": cur_timestamp_utc
-                    }
-                },
-                "aggs": {
-                    "min_value_in_range": {
-                        "min": {
-                            "field": "cnt"
-                        }
-                    }
-                }
-            }
-        });
-
-
-        let min_resp: Value = self.es_conn.get_search_query(&max_query, index_name).await?;
-        let maybe_min_val: f64 = max_resp["aggregations"]["max_value_in_range"]["value"].as_f64().unwrap_or(0.0);
-        
+        /* 3) 변화율 계산 (min=0 방지) */
         let fluctuation_val: f64 = if maybe_min_val > 0.0 {
             ((maybe_max_val - maybe_min_val) / maybe_min_val) * 100.0
         } else {
-            0.0  
+            0.0
         };
-        
-        Ok(())
+
+        let mut result: LogIndexResult = LogIndexResult::new(index_name.to_string(), true, None);
+
+        /* 4) 임계 초과 시 상세 샘플 1건(혹은 원하는 수) 조회해서 첨부 */
+        if fluctuation_val >= allowable {
+            let search_query: Value = json!({
+                "query": {
+                    "range": {
+                        "timestamp": {
+                            "gte": prev_timestamp_utc,
+                            "lte": cur_timestamp_utc
+                        }
+                    }
+                },
+                "size": 1,
+                "sort": [{ "timestamp": { "order": "desc" } }]
+            });
+
+            let response_body: Value = self
+                .es_conn
+                .get_search_query(&search_query, index_name)
+                .await?;
+            let alert_index_format: AlertIndexFormat =
+                self.get_query_result::<AlertIndexFormat, AlertIndex>(&response_body)?;
+
+            result = LogIndexResult::new(index_name.to_string(), true, Some(alert_index_format));
+        }
+
+        Ok(result)
     }
 
     // #[doc = "색인 동작 로그를 가져오는 함수"]

@@ -4,6 +4,6 @@ use crate::common::*;
 #[getset(get = "pub")]
 pub struct IndexConfig {
     pub index_name: String,
-    pub allowable_fluctuation_range: usize,
-    pub agg_term_sec: i64
+    pub allowable_fluctuation_range: f64,
+    pub agg_term_sec: i64,
 }

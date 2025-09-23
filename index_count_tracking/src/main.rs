@@ -30,6 +30,8 @@ use service::{notification_service_impl::*, query_service_impl::*};
 mod controller;
 use controller::main_controller::*;
 
+mod dto;
+
 use crate::controller::main_controller;
 
 #[tokio::main]

@@ -1,6 +1,5 @@
 use crate::common::*;
 
-
 #[doc = "Functions that return the current UTC time -> NaiveDate"]
 pub fn get_current_utc_naivedate() -> NaiveDate {
     let utc_now: DateTime<Utc> = Utc::now();
@@ -13,7 +12,6 @@ pub fn get_currnet_utc_naivedatetime() -> NaiveDateTime {
     utc_now.naive_local()
 }
 
-
 #[doc = "Function that returns the current UTC time as a string"]
 pub fn get_current_utc_naivedatetime_str() -> String {
     let curr_time: NaiveDateTime = get_currnet_utc_naivedatetime();
@@ -22,17 +20,16 @@ pub fn get_current_utc_naivedatetime_str() -> String {
 
 #[doc = "duration 이전 시각을 반환해주는 함수"]
 pub fn calc_time_window(time: &str, duration_secs: i64) -> anyhow::Result<String> {
-    /* 입력 문자열을 NaiveDateTime으로 파싱 */ 
+    /* 입력 문자열을 NaiveDateTime으로 파싱 */
     let base_time = NaiveDateTime::parse_from_str(time, "%Y-%m-%dT%H:%M:%SZ")
         .map_err(|e| anyhow!("[time_utils->calc_time_window] {}", e))?;
 
-    /* duration_secs 만큼 빼기 */ 
+    /* duration_secs 만큼 빼기 */
     let new_time: NaiveDateTime = base_time - chrono::Duration::seconds(duration_secs);
 
-    /* 다시 문자열로 변환 */ 
+    /* 다시 문자열로 변환 */
     Ok(new_time.format("%Y-%m-%dT%H:%M:%SZ").to_string())
 }
-
 
 // #[doc = "현재 UTC와 duration 이전 시각 반환해주는 함수"]
 // pub fn calc_time_window(duration_secs: i64) -> (NaiveDateTime, NaiveDateTime) {
@@ -40,7 +37,6 @@ pub fn calc_time_window(time: &str, duration_secs: i64) -> anyhow::Result<String
 //     let time_minutes_ago: NaiveDateTime = curr_time_utc - chrono::Duration::seconds(duration_secs);
 //     (curr_time_utc, time_minutes_ago)
 // }
-
 
 // #[doc = "Functions that return the current UTC time -> NaiveDate"]
 // pub fn get_current_utc_naivedate() -> NaiveDate {
@@ -105,8 +101,6 @@ pub fn calc_time_window(time: &str, duration_secs: i64) -> anyhow::Result<String
 //     let time_minutes_ago: NaiveDateTime = curr_time_utc - chrono::Duration::seconds(duration_secs);
 //     (curr_time_utc, time_minutes_ago)
 // }
-
-
 
 // #[doc = "Function that returns the current UTC time as a string"]
 // pub fn get_current_utc_naivedate_str(fmt: &str) -> Result<String, anyhow::Error> {

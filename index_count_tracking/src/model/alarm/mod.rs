@@ -1,1 +1,1 @@
-pub mod alarm_index_infos;
+

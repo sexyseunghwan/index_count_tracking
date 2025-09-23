@@ -3,9 +3,11 @@ use crate::common::*;
 use crate::utils_modules::{io_utils::*, time_utils::*};
 
 use crate::model::{
+    configs::total_config::*,
     index::{alert_index::*, index_list_config::*},
-    configs::total_config::*
 };
+
+use crate::dto::log_index_result::*;
 
 use crate::env_configuration::env_config::*;
 
@@ -21,19 +23,24 @@ pub struct MainController<N: NotificationService, TQ: QueryService, MQ: QuerySer
 impl<N: NotificationService, TQ: QueryService, MQ: QueryService> MainController<N, TQ, MQ> {
     #[doc = ""]
     pub async fn main_task(&self) -> anyhow::Result<()> {
-        
-        let index_list: IndexListConfig = read_toml_from_file::<IndexListConfig>(&INDEX_LIST_PATH)?;    
+        let index_list: IndexListConfig = read_toml_from_file::<IndexListConfig>(&INDEX_LIST_PATH)?;
         let mon_index_name: &str = get_system_config_info().monitor_index_name();
+
+        /* 1. 인덱스 문서 개수 정보 저장 */
+        self.save_index_cnt_infos(&index_list, mon_index_name)
+            .await?;
+
+        /* 2. 인덱스 문서 개수 검증 */
+        let index_doc_verification: Vec<LogIndexResult> = self.verify_index_cnt(&index_list).await?;
         
-        /* 인덱스 문서 개수 정보 저장 */
-        self.save_index_cnt_infos(&index_list, mon_index_name).await?;
-        
-        /* 인덱스 문서 개수 검증 */
-        
+        /* 3. 검증 결과를 바탕으로 알람을 보내주는 로직 */
+        if index_doc_verification.len() > 0 {
+
+        }
+
         // /* 인덱스 문서 개수 검증 */
         // for index_config in index_list.index() {
         //     let index_name: &str = index_config.index_name();
-
 
         // }
 
@@ -58,15 +65,18 @@ impl<N: NotificationService, TQ: QueryService, MQ: QueryService> MainController<
 
         Ok(())
     }
-    
-    #[doc = "인덱스 문서 개수 정보 색인 해주는 함수"]
-    async fn save_index_cnt_infos(&self, index_list: &IndexListConfig, mon_index_name: &str) -> anyhow::Result<()> {
 
+    #[doc = "인덱스 문서 개수 정보 색인 해주는 함수"]
+    async fn save_index_cnt_infos(
+        &self,
+        index_list: &IndexListConfig,
+        mon_index_name: &str,
+    ) -> anyhow::Result<()> {
         let cur_timestamp_utc: String = get_current_utc_naivedatetime_str();
-        
+
         for index_config in index_list.index() {
             let index_name: &str = index_config.index_name();
-            
+
             /* 해당 인덱스의 문서 개수 */
             let doc_cnt: usize = match self
                 .target_query_service
@@ -83,27 +93,45 @@ impl<N: NotificationService, TQ: QueryService, MQ: QueryService> MainController<
             /* 모니터링 인덱스에 해당 인덱스의 문서수를 색인 */
             let alert_index: AlertIndex =
                 AlertIndex::new(index_name.to_string(), doc_cnt, cur_timestamp_utc.clone());
-            
+
             /* 해당 정보를 모니터링 클러스터에 색인 */
-            self.mon_query_service.post_log_index(mon_index_name, &alert_index).await?;
+            self.mon_query_service
+                .post_log_index(mon_index_name, &alert_index)
+                .await?;
         }
-        
+
         Ok(())
+    }
+
+    #[doc = "인덱스 문서 개수 검증"]
+    async fn verify_index_cnt(
+        &self,
+        index_list: &IndexListConfig,
+    ) -> anyhow::Result<Vec<LogIndexResult>> {
+        let cur_timestamp_utc: String = get_current_utc_naivedatetime_str();
+
+        let mut log_index_results: Vec<LogIndexResult> = Vec::new();
+
+        for index_config in index_list.index() {
+            let log_index_res: LogIndexResult = self
+                .mon_query_service
+                .get_max_cnt_from_log_index(index_config, &cur_timestamp_utc)
+                .await?;
+
+            if log_index_res.alert_yn == true {
+                log_index_results.push(log_index_res);
+            }   
+        }
+
+        Ok(log_index_results)
     }
     
-    #[doc = "인덱스 문서 개수 검증"]
-    async fn verify_index_cnt(&self, index_list: &IndexListConfig, mon_index_name: &str) -> anyhow::Result<()> {
+    // #[doc = ""]
+    // async fn alert_index_status(&self, log_index_res: &[LogIndexResult]) -> anyhow::Result<()> {
 
-        let cur_timestamp_utc: String = get_current_utc_naivedatetime_str();
-        
-        for index_config in index_list.index() {
-            //let index_name: &str = index_config.index_name();
-            
-            
-            
-        }
 
-        Ok(())
-    }
+
+    //     Ok(())
+    // }
 
 }
