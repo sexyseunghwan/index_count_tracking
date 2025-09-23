@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Index Count Alert</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background-color: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+        .alert-header {
+            background-color: #f44336;
+            color: white;
+            padding: 20px;
+            text-align: center;
+        }
+        .alert-header h2 {
+            margin: 0 0 10px 0;
+            font-size: 24px;
+        }
+        .alert-header p {
+            margin: 0;
+            font-size: 16px;
+            opacity: 0.9;
+        }
+        .cluster-info {
+            background-color: #f9f9f9;
+            padding: 15px 20px;
+            margin: 0;
+            border-bottom: 1px solid #e0e0e0;
+        }
+        .cluster-info strong {
+            color: #333;
+        }
+        .content {
+            padding: 20px;
+        }
+        .alert-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+        }
+        .alert-table th, .alert-table td {
+            border: 1px solid #ddd;
+            padding: 12px;
+            text-align: left;
+            vertical-align: top;
+        }
+        .alert-table th {
+            background-color: #f2f2f2;
+            font-weight: bold;
+            color: #333;
+        }
+        .alert-table tr:nth-child(even) {
+            background-color: #f9f9f9;
+        }
+        .alert-table tr:hover {
+            background-color: #f0f0f0;
+        }
+        .history-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 10px 0;
+            font-size: 12px;
+        }
+        .history-table th, .history-table td {
+            border: 1px solid #ccc;
+            padding: 6px 8px;
+            text-align: center;
+        }
+        .history-table th {
+            background-color: #e9ecef;
+            font-weight: bold;
+            font-size: 11px;
+        }
+        .count-change {
+            font-weight: bold;
+            font-size: 16px;
+        }
+        .count-increase {
+            color: #28a745;
+        }
+        .count-decrease {
+            color: #dc3545;
+        }
+        .count-normal {
+            color: #6c757d;
+        }
+        .index-name {
+            font-weight: bold;
+            color: #007bff;
+        }
+        .footer {
+            margin-top: 30px;
+            padding: 20px;
+            background-color: #f8f9fa;
+            border-left: 4px solid #007bff;
+            border-radius: 0 0 8px 8px;
+        }
+        .footer h3 {
+            margin-top: 0;
+            color: #495057;
+        }
+        .footer ul {
+            margin: 10px 0;
+            padding-left: 20px;
+        }
+        .footer li {
+            margin: 5px 0;
+            color: #6c757d;
+        }
+        .footer em {
+            color: #6c757d;
+            font-size: 14px;
+        }
+        .timestamp {
+            color: #6c757d;
+            font-size: 14px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="alert-header">
+            <h2>🚨 Index Document Count Alert</h2>
+            <p>Significant changes detected in index document counts</p>
+        </div>
+
+        <div class="cluster-info">
+            <strong>Cluster:</strong> {cluster_name}<br>
+            <strong>Alert Time:</strong> {alert_time}
+        </div>
+
+        <div class="content">
+            <table class="alert-table">
+                <thead>
+                    <tr>
+                        <th>Index Name</th>
+                        <th>Current Count</th>
+                        <th>Alert Time</th>
+                        <th>Document Count History</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {alert_rows}
+                </tbody>
+            </table>
+        </div>
+
+        <div class="footer">
+            <h3>📋 Action Required:</h3>
+            <ul>
+                <li>Check the affected indices immediately</li>
+                <li>Verify data ingestion processes</li>
+                <li>Review system logs for any errors</li>
+                <li>Contact the development team if issues persist</li>
+            </ul>
+            <p><em>This is an automated alert from the Index Monitoring System.</em></p>
+        </div>
+    </div>
+</body>
+</html>

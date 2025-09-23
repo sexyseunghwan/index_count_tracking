@@ -21,6 +21,7 @@ pub trait QueryService {
     //async fn get_max_cnt_from_log_index(&self, index_config: &IndexConfig, cur_timestamp_utc: &str) -> anyhow::Result<AlaramIndexInfo>;
     async fn get_max_cnt_from_log_index(
         &self,
+        mon_index_name: &str,
         index_config: &IndexConfig,
         cur_timestamp_utc: &str,
     ) -> anyhow::Result<LogIndexResult>;

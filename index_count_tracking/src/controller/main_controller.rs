@@ -31,12 +31,13 @@ impl<N: NotificationService, TQ: QueryService, MQ: QueryService> MainController<
             .await?;
 
         /* 2. 인덱스 문서 개수 검증 */
-        let index_doc_verification: Vec<LogIndexResult> = self.verify_index_cnt(&index_list).await?;
+        let index_doc_verification: Vec<LogIndexResult> = self.verify_index_cnt(mon_index_name, &index_list).await?;
         
         /* 3. 검증 결과를 바탕으로 알람을 보내주는 로직 */
-        if index_doc_verification.len() > 0 {
-
-        }
+        //self.alert_index_status(&index_doc_verification).await?;
+        // if index_doc_verification.len() > 0 {
+        //     self.alert_index_status(&index_doc_verification).await?;
+        // }
 
         // /* 인덱스 문서 개수 검증 */
         // for index_config in index_list.index() {
@@ -106,6 +107,7 @@ impl<N: NotificationService, TQ: QueryService, MQ: QueryService> MainController<
     #[doc = "인덱스 문서 개수 검증"]
     async fn verify_index_cnt(
         &self,
+        mon_index_name: &str,
         index_list: &IndexListConfig,
     ) -> anyhow::Result<Vec<LogIndexResult>> {
         let cur_timestamp_utc: String = get_current_utc_naivedatetime_str();
@@ -115,7 +117,7 @@ impl<N: NotificationService, TQ: QueryService, MQ: QueryService> MainController<
         for index_config in index_list.index() {
             let log_index_res: LogIndexResult = self
                 .mon_query_service
-                .get_max_cnt_from_log_index(index_config, &cur_timestamp_utc)
+                .get_max_cnt_from_log_index(mon_index_name, index_config, &cur_timestamp_utc)
                 .await?;
 
             if log_index_res.alert_yn == true {
@@ -126,12 +128,21 @@ impl<N: NotificationService, TQ: QueryService, MQ: QueryService> MainController<
         Ok(log_index_results)
     }
     
-    // #[doc = ""]
-    // async fn alert_index_status(&self, log_index_res: &[LogIndexResult]) -> anyhow::Result<()> {
+    #[doc = "인덱스 문서 개수 이상 상황 알람 발송"]
+    async fn alert_index_status(&self, log_index_res: &[LogIndexResult]) -> anyhow::Result<()> {
+        info!("Sending index alert for {} problematic indices", log_index_res.len());
 
+        match self.notification_service.send_index_alert_message(log_index_res).await {
+            Ok(_) => {
+                info!("Successfully sent index alert notifications");
+            }
+            Err(e) => {
+                error!("[ERROR][MainController->alert_index_status] Failed to send alert notifications: {:?}", e);
+                return Err(e);
+            }
+        }
 
-
-    //     Ok(())
-    // }
+        Ok(())
+    }
 
 }

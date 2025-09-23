@@ -125,6 +125,7 @@ impl QueryServiceImpl {
     #[doc = "주어진 시간 범위(gte~lte)에 대해 단일 집계 값을 f64로 받아오는 헬퍼"]
     async fn fetch_agg_value_f64(
         &self,
+        mon_index_name: &str,
         index_name: &str,
         gte: &str,
         lte: &str,
@@ -134,16 +135,28 @@ impl QueryServiceImpl {
         let query: Value = json!({
             "size": 0,
             "query": {
-                "range": {
-                    "timestamp": { "gte": gte, "lte": lte }
+                "bool": {
+                    "filter": [
+                        {
+                            "range": {
+                                "timestamp": { "gte": gte, "lte": lte }
+                            } 
+                        },
+                        {
+                            "term": {
+                                "index_name.keyword": index_name
+                            }
+                        }
+                    ]
                 }
+                
             },
             "aggs": {
                 agg_name: agg_body
             }
         });
 
-        let resp: Value = self.es_conn.get_search_query(&query, index_name).await?;
+        let resp: Value = self.es_conn.get_search_query(&query, mon_index_name).await?;
         let v: Option<f64> = resp["aggregations"][agg_name]["value"].as_f64();
 
         /* NaN/무한대 방어 */
@@ -203,6 +216,7 @@ impl QueryService for QueryServiceImpl {
     5. 변화율이 허용치 미만이면 `alert_info`가 None인 `LogIndexResult` 반환
 
     # Arguments
+    * `mon_index_name` - 모니터링 정보를 가지고 있는 인덱스 이름
     * `index_config` - 모니터링 대상 인덱스 설정 (허용변동범위, 집계주기 포함)
     * `cur_timestamp_utc` - 기준 시각 (UTC, "%Y-%m-%dT%H:%M:%SZ" 포맷)
 
@@ -212,6 +226,7 @@ impl QueryService for QueryServiceImpl {
     "#]
     async fn get_max_cnt_from_log_index(
         &self,
+        mon_index_name: &str,
         index_config: &IndexConfig,
         cur_timestamp_utc: &str,
     ) -> anyhow::Result<LogIndexResult> {
@@ -224,6 +239,7 @@ impl QueryService for QueryServiceImpl {
         /* 1) 윈도우 내 max(cnt) */
         let maybe_max_val: f64 = self
             .fetch_agg_value_f64(
+                mon_index_name,
                 index_name,
                 &prev_timestamp_utc,
                 cur_timestamp_utc,
@@ -236,6 +252,7 @@ impl QueryService for QueryServiceImpl {
         /* 2) 윈도우 내 min(cnt) */
         let maybe_min_val: f64 = self
             .fetch_agg_value_f64(
+                mon_index_name,
                 index_name,
                 &prev_timestamp_utc,
                 cur_timestamp_utc,
@@ -244,7 +261,7 @@ impl QueryService for QueryServiceImpl {
             )
             .await?
             .unwrap_or(0.0);
-
+    
         /* 3) 변화율 계산 (min=0 방지) */
         let fluctuation_val: f64 = if maybe_min_val > 0.0 {
             ((maybe_max_val - maybe_min_val) / maybe_min_val) * 100.0
@@ -255,29 +272,57 @@ impl QueryService for QueryServiceImpl {
         let mut result: LogIndexResult = LogIndexResult::new(index_name.to_string(), true, None);
 
         /* 4) 임계 초과 시 상세 샘플 1건(혹은 원하는 수) 조회해서 첨부 */
-        if fluctuation_val >= allowable {
-            let search_query: Value = json!({
-                "query": {
-                    "range": {
-                        "timestamp": {
-                            "gte": prev_timestamp_utc,
-                            "lte": cur_timestamp_utc
-                        }
+        let search_query: Value = json!({
+            "query": {
+                "range": {
+                    "timestamp": {
+                        "gte": prev_timestamp_utc,
+                        "lte": cur_timestamp_utc
                     }
-                },
-                "size": 1,
-                "sort": [{ "timestamp": { "order": "desc" } }]
-            });
+                }
+            },
+            "size": 1,
+            "sort": [{ "timestamp": { "order": "desc" } }]
+        });
 
-            let response_body: Value = self
-                .es_conn
-                .get_search_query(&search_query, index_name)
-                .await?;
-            let alert_index_format: AlertIndexFormat =
-                self.get_query_result::<AlertIndexFormat, AlertIndex>(&response_body)?;
+        let response_body: Value = self
+            .es_conn
+            .get_search_query(&search_query, mon_index_name)
+            .await?;
+        
+        // match self.get_query_result::<AlertIndexFormat, AlertIndex>(&response_body) {
+        //         Ok(alert_index_format) => {
+        //             result = LogIndexResult::new(index_name.to_string(), true, Some(alert_index_format));
+        //         },
+        //         Err(e) => {
+        //             error!("[QueryServiceImpl->get_max_cnt_from_log_index] {:?}", e);
+        //         }
+        //     };
+        
+        // 아래가 진짜 적용되어야 할 것
+        // if fluctuation_val >= allowable {
+        //     let search_query: Value = json!({
+        //         "query": {
+        //             "range": {
+        //                 "timestamp": {
+        //                     "gte": prev_timestamp_utc,
+        //                     "lte": cur_timestamp_utc
+        //                 }
+        //             }
+        //         },
+        //         "size": 1,
+        //         "sort": [{ "timestamp": { "order": "desc" } }]
+        //     });
 
-            result = LogIndexResult::new(index_name.to_string(), true, Some(alert_index_format));
-        }
+        //     let response_body: Value = self
+        //         .es_conn
+        //         .get_search_query(&search_query, index_name)
+        //         .await?;
+        //     let alert_index_format: AlertIndexFormat =
+        //         self.get_query_result::<AlertIndexFormat, AlertIndex>(&response_body)?;
+
+        //     result = LogIndexResult::new(index_name.to_string(), true, Some(alert_index_format));
+        // }
 
         Ok(result)
     }
