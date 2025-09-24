@@ -111,7 +111,7 @@ impl<N: NotificationService, TQ: QueryService, MQ: QueryService> MainController<
                 .get_alert_infos_from_log_index(mon_index_name, index_config, &cur_timestamp_utc)
                 .await?;
 
-            if log_index_res.alert_yn == true {
+            if log_index_res.alert_yn {
                 log_index_results.push(log_index_res);
             }
         }

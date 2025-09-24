@@ -8,7 +8,7 @@ use crate::utils_modules::io_utils::*;
 
 use crate::env_configuration::env_config::*;
 
-static TOTAL_CONFIG: once_lazy<TotalConfig> = once_lazy::new(|| initialize_server_config());
+static TOTAL_CONFIG: once_lazy<TotalConfig> = once_lazy::new(initialize_server_config);
 
 #[doc = "Function to initialize Server configuration information instances"]
 pub fn initialize_server_config() -> TotalConfig {
@@ -24,6 +24,7 @@ pub struct TotalConfig {
     pub sqlserver: RdbConfig,
     pub telegram: TelegramConfig,
     pub system: SystemConfig,
+    #[allow(dead_code)]
     pub smtp: SmtpConfig
 }
 
@@ -52,7 +53,8 @@ pub fn get_system_config_info() -> &'static SystemConfig {
     &TOTAL_CONFIG.system
 }
 
-#[doc = "system 설정 정보"]
+#[doc = "smtp 설정 정보"]
+#[allow(dead_code)]
 pub fn get_smtp_config_info() -> &'static SmtpConfig {
     &TOTAL_CONFIG.smtp
 }

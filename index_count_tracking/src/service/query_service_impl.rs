@@ -105,6 +105,7 @@ impl QueryServiceImpl {
         * `T` - 변환된 단일 객체
         * `anyhow::Error` - 응답 파싱 실패, 빈 결과, 필수 필드 누락, 역직렬화 실패 시
     "#]
+    #[allow(dead_code)]
     fn get_query_result<T, S>(&self, response_body: &Value) -> Result<T, anyhow::Error>
     where
         S: DeserializeOwned,

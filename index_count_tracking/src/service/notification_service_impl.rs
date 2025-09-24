@@ -86,6 +86,7 @@ impl NotificationServiceImpl {
         * 인증 실패
         * 메시지 전송 실패
     "#]
+    #[allow(dead_code)]
     async fn send_message_to_receiver_html(
         &self,
         smtp_config: &SmtpConfig,
@@ -139,6 +140,7 @@ impl NotificationServiceImpl {
         # Returns
         * `anyhow::Result<()>` - 전체 프로세스 성공/실패 여부
     "#]
+    #[allow(dead_code)]
     async fn send_message_to_receivers_smtp(&self, email_subject: &str, html_content: &str) -> anyhow::Result<()> {
         
         /* receiver email list */
@@ -150,7 +152,7 @@ impl NotificationServiceImpl {
             /* ASYNC TASK */
             let tasks = receiver_email_list.iter().map(|receiver| {
                 let email_id: &String = receiver.email_id();
-                self.send_message_to_receiver_html(smtp_config, email_id.as_str(), &email_subject, &html_content)
+                self.send_message_to_receiver_html(smtp_config, email_id.as_str(), email_subject, html_content)
             });
 
             let results: Vec<Result<String, anyhow::Error>> = join_all(tasks).await;
@@ -172,7 +174,7 @@ impl NotificationServiceImpl {
                     smtp_config,
                     email_id.as_str(),
                     "[Elasticsearch] Index removed list",
-                    &html_content,
+                    html_content,
                 )
                 .await?;
             }

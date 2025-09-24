@@ -13,5 +13,6 @@ pub trait EsRepository {
         param_struct: &T,
         index_name: &str,
     ) -> Result<(), anyhow::Error>;
+    #[allow(dead_code)]
     async fn delete_query(&self, doc_id: &str, index_name: &str) -> Result<(), anyhow::Error>;
 }
