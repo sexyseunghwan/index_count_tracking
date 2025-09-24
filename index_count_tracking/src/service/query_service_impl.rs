@@ -450,6 +450,9 @@ impl QueryService for QueryServiceImpl {
             .fetch_min_max_values(mon_index_name, index_name, &prev_timestamp_utc, cur_timestamp_utc)
             .await?;
 
+        println!("min_val: {:?}", min_val);
+        println!("max_val: {:?}", max_val);
+
         let fluctuation_val: f64 = Self::calculate_fluctuation(min_val, max_val);
 
         let mut result: LogIndexResult = LogIndexResult::new(index_name.to_string(), false, None, fluctuation_val, 0);
@@ -467,13 +470,13 @@ impl QueryService for QueryServiceImpl {
                     0
                 });
 
-            result.set_cur_cnt(cur_index_cnt);
-
             let alert_indexes: Vec<AlertIndex> = alert_index_formats
                 .into_iter()
                 .map(|format| format.alert_index)
                 .collect();
 
+            result.set_alert_yn(true);
+            result.set_cur_cnt(cur_index_cnt);
             result.set_alert_index_format(Some(alert_indexes));
         }
 
