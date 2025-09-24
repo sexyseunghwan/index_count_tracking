@@ -21,7 +21,19 @@ pub struct MainController<N: NotificationService, TQ: QueryService, MQ: QuerySer
 }
 
 impl<N: NotificationService, TQ: QueryService, MQ: QueryService> MainController<N, TQ, MQ> {
-    #[doc = ""]
+    #[doc = r#"
+        메인 루프를 실행하는 핵심 함수로, 30초 간격으로 인덱스 모니터링 작업을 반복 수행한다.
+
+        1. 인덱스 설정 파일(`INDEX_LIST_PATH`)을 읽어와 모니터링 대상 인덱스 목록을 가져온다
+        2. 30초마다 다음 작업들을 순차적으로 실행:
+           - `save_index_cnt_infos`: 각 인덱스의 현재 문서 개수를 모니터링 인덱스에 저장
+           - `verify_index_cnt`: 저장된 데이터를 바탕으로 각 인덱스의 문서 개수 변동을 검증
+           - `alert_index_status`: 변동이 허용 범위를 초과한 인덱스에 대해 알람 발송
+        3. 무한루프로 동작하며, 각 단계에서 오류 발생 시 해당 사이클을 중단하고 다음 사이클로 진행
+
+        # Returns
+        * `anyhow::Result<()>` - 정상 종료 시 Ok(()), 치명적 오류 시 Err
+    "#]
     pub async fn main_task(&self) -> anyhow::Result<()> {
         let index_list: IndexListConfig = read_toml_from_file::<IndexListConfig>(&INDEX_LIST_PATH)?;
         let mon_index_name: &str = get_system_config_info().monitor_index_name();

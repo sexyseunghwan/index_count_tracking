@@ -17,12 +17,26 @@ pub struct QueryServiceImpl {
 }
 
 impl QueryServiceImpl {
-    #[doc = "Functions that return queried results as vectors"]
-    /// # Arguments
-    /// * `response_body` - Querying Results
-    ///
-    /// # Returns
-    /// * Result<Vec<T>, anyhow::Error>
+    #[doc = r#"
+        Elasticsearch 검색 응답을 파싱하여 벡터 형태의 구조화된 객체로 변환하는 제네릭 함수.
+
+        1. ES 응답의 `hits.hits` 배열에서 각 검색 결과를 추출
+        2. 각 히트의 `_id`와 `_source`를 분리하여 파싱
+        3. `_source`를 지정된 타입 `S`로 역직렬화
+        4. `FromSearchHit` 트레이트를 통해 최종 타입 `T`로 변환
+        5. 모든 결과를 벡터로 수집하여 반환
+
+        # Type Parameters
+        * `T` - 최종 반환할 객체 타입 (`FromSearchHit` 트레이트 구현 필요)
+        * `S` - ES `_source` 필드의 역직렬화 타입 (`DeserializeOwned` 구현 필요)
+
+        # Arguments
+        * `response_body` - Elasticsearch 검색 응답 JSON
+
+        # Returns
+        * `Vec<T>` - 변환된 객체들의 벡터
+        * `anyhow::Error` - 응답 파싱 실패, 필수 필드 누락, 역직렬화 실패 시
+    "#]
     fn get_query_result_vec<T, S>(&self, response_body: &Value) -> Result<Vec<T>, anyhow::Error>
     where
         S: DeserializeOwned,
@@ -71,12 +85,26 @@ impl QueryServiceImpl {
         Ok(results)
     }
 
-    #[doc = "Functions that return queried results"]
-    /// # Arguments
-    /// * `response_body` - Querying Results
-    ///
-    /// # Returns
-    /// * Result<T, anyhow::Error>
+    #[doc = r#"
+        Elasticsearch 검색 응답에서 첫 번째 결과만을 파싱하여 단일 구조화된 객체로 변환하는 제네릭 함수.
+
+        1. ES 응답의 `hits.hits` 배열에서 첫 번째 검색 결과를 추출
+        2. 첫 번째 히트가 없으면 에러 반환 (빈 결과 처리)
+        3. `_id`와 `_source`를 분리하여 파싱
+        4. `_source`를 지정된 타입 `S`로 역직렬화
+        5. `FromSearchHit` 트레이트를 통해 최종 타입 `T`로 변환
+
+        # Type Parameters
+        * `T` - 최종 반환할 객체 타입 (`FromSearchHit` 트레이트 구현 필요)
+        * `S` - ES `_source` 필드의 역직렬화 타입 (`DeserializeOwned` 구현 필요)
+
+        # Arguments
+        * `response_body` - Elasticsearch 검색 응답 JSON
+
+        # Returns
+        * `T` - 변환된 단일 객체
+        * `anyhow::Error` - 응답 파싱 실패, 빈 결과, 필수 필드 누락, 역직렬화 실패 시
+    "#]
     fn get_query_result<T, S>(&self, response_body: &Value) -> Result<T, anyhow::Error>
     where
         S: DeserializeOwned,
@@ -119,7 +147,27 @@ impl QueryServiceImpl {
         Ok(T::from_search_hit(id, source))
     }
 
-    #[doc = "주어진 시간 범위(gte~lte)에 대해 단일 집계 값을 f64로 받아오는 헬퍼"]
+    #[doc = r#"
+        지정된 시간 범위와 인덱스에 대해 Elasticsearch 집계 쿼리를 실행하여 단일 집계 값을 조회하는 헬퍼 함수.
+
+        1. 시간 범위(`timestamp` 필드) 및 인덱스명(`index_name.keyword`)으로 필터링된 bool 쿼리 생성
+        2. 지정된 집계 타입(`agg_body`)으로 집계 수행 (예: max, min, avg 등)
+        3. 집계 결과에서 `value` 필드를 f64 타입으로 추출
+        4. NaN이나 무한대 값 방어를 통해 유효한 값만 반환
+        5. 결과가 없거나 유효하지 않으면 None 반환
+
+        # Arguments
+        * `mon_index_name` - 모니터링 데이터가 저장된 Elasticsearch 인덱스명
+        * `index_name` - 필터링할 대상 인덱스명 (term 쿼리용)
+        * `gte` - 시간 범위 시작점 (greater than or equal, ISO 8601 포맷)
+        * `lte` - 시간 범위 종료점 (less than or equal, ISO 8601 포맷)
+        * `agg_name` - 집계 쿼리의 이름 (응답에서 참조용)
+        * `agg_body` - 집계 쿼리 본문 (JSON 형태의 집계 정의)
+
+        # Returns
+        * `Option<f64>` - 집계 결과 값 (유효한 경우), None (결과 없음 또는 무효한 값)
+        * `anyhow::Error` - ES 조회 실패 시
+    "#]
     async fn fetch_agg_value_f64(
         &self,
         mon_index_name: &str,
@@ -164,6 +212,25 @@ impl QueryServiceImpl {
         Ok(v)
     }
 
+    #[doc = r#"
+        지정된 시간 범위와 인덱스에 대해 cnt 필드의 최대/최소 값을 병렬로 조회한다.
+
+        1. `fetch_agg_value_f64`를 통해 max 집계와 min 집계를 각각 수행
+        2. Elasticsearch의 집계 기능을 사용하여 지정된 시간 범위 내에서:
+           - `cnt` 필드의 최대값을 조회
+           - `cnt` 필드의 최소값을 조회
+        3. 각 값이 null이거나 유효하지 않은 경우 0.0으로 기본값 설정
+
+        # Arguments
+        * `mon_index_name` - 모니터링 데이터가 저장된 인덱스명
+        * `index_name` - 조회 대상 인덱스명 (필터링용)
+        * `gte` - 시작 시간 (greater than or equal)
+        * `lte` - 종료 시간 (less than or equal)
+
+        # Returns
+        * `(f64, f64)` - (최소값, 최대값) 튜플
+        * `anyhow::Error` - ES 조회 실패 시
+    "#]
     async fn fetch_min_max_values(
         &self,
         mon_index_name: &str,
@@ -171,7 +238,7 @@ impl QueryServiceImpl {
         gte: &str,
         lte: &str,
     ) -> anyhow::Result<(f64, f64)> {
-        let max_val = self
+        let max_val: f64 = self
             .fetch_agg_value_f64(
                 mon_index_name,
                 index_name,
@@ -183,7 +250,7 @@ impl QueryServiceImpl {
             .await?
             .unwrap_or(0.0);
 
-        let min_val = self
+        let min_val: f64 = self
             .fetch_agg_value_f64(
                 mon_index_name,
                 index_name,
@@ -198,6 +265,22 @@ impl QueryServiceImpl {
         Ok((min_val, max_val))
     }
 
+    #[doc = r#"
+        최소값과 최대값을 바탕으로 변동률(%)을 계산하는 헬퍼 함수.
+
+        변동률 = ((최대값 - 최소값) / 최소값) × 100
+
+        1. 최소값이 0보다 큰 경우: 정상적인 변동률 계산 수행
+        2. 최소값이 0 이하인 경우: 0.0 반환 (0으로 나누기 방지)
+        3. 결과는 백분율로 표현됨 (예: 50.0 = 50%)
+
+        # Arguments
+        * `min_val` - 최소값
+        * `max_val` - 최대값
+
+        # Returns
+        * `f64` - 변동률 (백분율)
+    "#]
     fn calculate_fluctuation(min_val: f64, max_val: f64) -> f64 {
         if min_val > 0.0 {
             ((max_val - min_val) / min_val) * 100.0
@@ -206,6 +289,24 @@ impl QueryServiceImpl {
         }
     }
 
+    #[doc = r#"
+        지정된 시간 범위 내에서 특정 인덱스의 알람 데이터를 조회하여 AlertIndexFormat 벡터로 반환한다.
+
+        1. 시간 범위(`gte` ~ `lte`)와 인덱스명으로 필터링된 검색 쿼리 생성
+        2. `timestamp` 필드 기준으로 내림차순 정렬하여 최신 데이터부터 조회
+        3. 조회된 결과를 `AlertIndex`에서 `AlertIndexFormat`으로 변환
+        4. `get_query_result_vec` 헬퍼를 통해 ES 응답을 구조화된 객체로 파싱
+
+        # Arguments
+        * `mon_index_name` - 모니터링 데이터가 저장된 인덱스명
+        * `index_name` - 대상 인덱스명
+        * `prev_timestamp_utc` - 조회 시작 시간 (UTC)
+        * `cur_timestamp_utc` - 조회 종료 시간 (UTC)
+
+        # Returns
+        * `Vec<AlertIndexFormat>` - 시간순으로 정렬된 알람 데이터 목록
+        * `anyhow::Error` - ES 조회 실패 또는 파싱 실패 시
+    "#]
     async fn fetch_alert_data(
         &self,
         mon_index_name: &str,
@@ -244,7 +345,22 @@ impl QueryServiceImpl {
 
 #[async_trait]
 impl QueryService for QueryServiceImpl {
-    #[doc = "특정 인덱스의 총 문서 개수 반환해주는 함수"]
+    #[doc = r#"
+        지정된 Elasticsearch 인덱스의 전체 문서 개수를 정확하게 조회하여 반환하는 함수.
+
+        1. `match_all` 쿼리로 모든 문서를 대상으로 검색 수행
+        2. `size: 0`으로 설정하여 문서 본문은 받지 않고 메타데이터만 조회
+        3. `track_total_hits: true`로 설정하여 정확한 총 문서 수 계산 활성화
+        4. 응답의 `hits.total.value`에서 문서 개수를 usize로 변환
+        5. 큰 인덱스에서도 정확한 카운트를 보장
+
+        # Arguments
+        * `index_name` - 문서 개수를 조회할 Elasticsearch 인덱스명
+
+        # Returns
+        * `usize` - 인덱스의 총 문서 개수
+        * `anyhow::Error` - ES 조회 실패, 응답 파싱 실패, 타입 변환 실패 시
+    "#]
     async fn get_index_doc_count(&self, index_name: &str) -> anyhow::Result<usize> {
         let query: Value = json!({
             "size": 0,                     /* 문서 본문은 받지 않음 */
@@ -264,7 +380,23 @@ impl QueryService for QueryServiceImpl {
         Ok(value)
     }
 
-    #[doc = "로그 인덱스를 색인해주는 함수"]
+    #[doc = r#"
+        AlertIndex 구조체를 지정된 Elasticsearch 인덱스에 문서로 색인(저장)하는 함수.
+
+        1. `AlertIndex` 구조체를 JSON 형태로 직렬화
+        2. Elasticsearch의 인덱싱 API를 통해 지정된 인덱스에 문서 저장
+        3. 색인 실패 시 에러 로그를 기록하되 함수 실행은 계속 진행
+        4. 비동기 처리를 통해 ES와의 네트워크 통신 최적화
+        5. 에러가 발생해도 상위 호출자에게 성공으로 반환 (로그만 기록)
+
+        # Arguments
+        * `index_name` - 문서를 저장할 Elasticsearch 인덱스명
+        * `alert_index` - 색인할 AlertIndex 구조체 참조
+
+        # Returns
+        * `()` - 항상 성공 반환 (에러는 로그로만 처리)
+        * `anyhow::Error` - 실제로는 반환되지 않음 (내부에서 처리)
+    "#]
     async fn post_log_index(
         &self,
         index_name: &str,
