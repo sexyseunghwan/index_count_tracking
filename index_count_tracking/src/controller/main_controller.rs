@@ -112,8 +112,6 @@ impl<N: NotificationService, TQ: QueryService, MQ: QueryService> MainController<
                 .get_alert_infos_from_log_index(mon_index_name, index_config, &cur_timestamp_utc)
                 .await?;
 
-            println!("{:?}", log_index_res);
-
             if log_index_res.alert_yn {
                 log_index_results.push(log_index_res);
             }

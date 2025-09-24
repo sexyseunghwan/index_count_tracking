@@ -277,24 +277,24 @@ impl NotificationServiceImpl {
             .generate_index_alert_html(log_index_results, elastic_config)?;
 
         /* SMTP 버전 -> 온라인망 사용용*/
-        //self.send_message_to_receivers_smtp(&email_subject, &html_content).await?;
+        self.send_message_to_receivers_smtp(&email_subject, &html_content).await?;
         
         /* SP 버전 */ 
-        let sql_conn: Arc<SqlServerRepositoryImpl> = get_sqlserver_repo();
+        // let sql_conn: Arc<SqlServerRepositoryImpl> = get_sqlserver_repo();
 
-        for receiver in receiver_email_list {
-            match sql_conn
-                .execute_imailer_procedure(receiver.email_id(), &email_subject, &html_content)
-                .await
-            {
-                Ok(_) => {
-                    info!("Successfully sent index alert mail to {}", receiver.email_id());
-                }
-                Err(e) => {
-                    error!("[ERROR][NotificationServiceImpl->send_email_index_alert] Failed to send mail to {} : {:?}", receiver.email_id(), e);
-                }
-            }
-        }
+        // for receiver in receiver_email_list {
+        //     match sql_conn
+        //         .execute_imailer_procedure(receiver.email_id(), &email_subject, &html_content)
+        //         .await
+        //     {
+        //         Ok(_) => {
+        //             info!("Successfully sent index alert mail to {}", receiver.email_id());
+        //         }
+        //         Err(e) => {
+        //             error!("[ERROR][NotificationServiceImpl->send_email_index_alert] Failed to send mail to {} : {:?}", receiver.email_id(), e);
+        //         }
+        //     }
+        // }
 
         Ok(())
     }

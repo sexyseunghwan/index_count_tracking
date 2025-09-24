@@ -271,8 +271,8 @@ impl QueryServiceImpl {
 
         변동률 = ((최대값 - 최소값) / 최소값) × 100
 
-        1. 최소값이 0보다 큰 경우: 정상적인 변동률 계산 수행
-        2. 최소값이 0 이하인 경우: 0.0 반환 (0으로 나누기 방지)
+        1. 최소값이 0보다 큰 경우: 정상적인 변동률 계산 수행  
+        2. 최소값이 0 이하인 경우: 0.0 반환 (0으로 나누기 방지)  
         3. 결과는 백분율로 표현됨 (예: 50.0 = 50%)
 
         # Arguments
@@ -282,13 +282,18 @@ impl QueryServiceImpl {
         # Returns
         * `f64` - 변동률 (백분율)
     "#]
-    fn calculate_fluctuation(min_val: f64, max_val: f64) -> f64 {
-        if min_val > 0.0 {
-            ((max_val - min_val) / min_val) * 100.0
+    fn calculate_fluctuation(val1: f64, val2: f64) -> f64 {
+        let diff: f64 = (val1 - val2).abs();
+
+        let avg: f64 = (val1.abs() + val2.abs()) / 2.0;
+
+        if avg > 0.0 {
+            (diff / avg) * 100.0
         } else {
             0.0
         }
     }
+
 
     #[doc = r#"
         지정된 시간 범위 내에서 특정 인덱스의 알람 데이터를 조회하여 AlertIndexFormat 벡터로 반환한다.
@@ -450,13 +455,10 @@ impl QueryService for QueryServiceImpl {
             .fetch_min_max_values(mon_index_name, index_name, &prev_timestamp_utc, cur_timestamp_utc)
             .await?;
 
-        println!("min_val: {:?}", min_val);
-        println!("max_val: {:?}", max_val);
-
         let fluctuation_val: f64 = Self::calculate_fluctuation(min_val, max_val);
 
         let mut result: LogIndexResult = LogIndexResult::new(index_name.to_string(), false, None, fluctuation_val, 0);
-
+        
         if fluctuation_val >= allowable {
             let alert_index_formats: Vec<AlertIndexFormat> = self
                 .fetch_alert_data(mon_index_name, index_name, &prev_timestamp_utc, cur_timestamp_utc)
