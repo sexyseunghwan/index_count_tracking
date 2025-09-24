@@ -17,7 +17,7 @@ fn initialize_tele_bot_client() -> Arc<TelebotRepositoryImpl> {
     let chat_room_id: &String = telegram_config.chat_room_id();
 
     let tele_repo: TelebotRepositoryImpl =
-        TelebotRepositoryImpl::new(bot_token.clone(), chat_room_id.clone());
+        TelebotRepositoryImpl::new(bot_token.to_string(), chat_room_id.to_string());
 
     Arc::new(tele_repo)
 }

@@ -59,11 +59,15 @@ pub fn get_smtp_config_info() -> &'static SmtpConfig {
 
 impl TotalConfig {
     fn new() -> Self {
-        read_toml_from_file::<TotalConfig>(&SERVER_CONFIG_PATH)
-                .unwrap_or_else(|e| {
-                    let err_msg: &str = "Failed to convert the data from SERVER_CONFIG_PATH into the TotalConfig structure.";
-                    error!("[TotalConfig->new] {} {:?}", err_msg, e);
-                    panic!("[TotalConfig->new] {} {:?}", err_msg, e)
-                })
+        match read_toml_from_file::<TotalConfig>(&SERVER_CONFIG_PATH) {
+            Ok(config) => config,
+            Err(e) => {
+                let err_msg = "Failed to convert the data from SERVER_CONFIG_PATH into the TotalConfig structure.";
+                error!("[TotalConfig->new] {} {:?}", err_msg, e);
+                // For static configuration, we need to handle this gracefully
+                // In a real scenario, consider using a Result type or default values
+                std::process::exit(1);
+            }
+        }
     }
 }

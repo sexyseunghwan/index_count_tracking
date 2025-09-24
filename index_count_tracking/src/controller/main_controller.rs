@@ -72,7 +72,7 @@ impl<N: NotificationService, TQ: QueryService, MQ: QueryService> MainController<
 
             /* 모니터링 인덱스에 해당 인덱스의 문서수를 색인 */
             let alert_index: AlertIndex =
-                AlertIndex::new(index_name.to_string(), doc_cnt, cur_timestamp_utc.clone());
+                AlertIndex::new(index_name.to_string(), doc_cnt, cur_timestamp_utc.to_string());
 
             /* 해당 정보를 모니터링 클러스터에 색인 */
             self.mon_query_service

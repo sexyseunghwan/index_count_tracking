@@ -62,7 +62,7 @@ impl QueryServiceImpl {
                     anyhow!("[QueryServiceImpl->get_query_result_vec] Missing '_source'")
                 })?;
 
-                let source: S = serde_json::from_value(src_val.clone()).map_err(|e| {
+                let source: S = serde_json::from_value(src_val.to_owned()).map_err(|e| {
                     anyhow!(
                         "[QueryServiceImpl->get_query_result_vec] Failed to deserialize source: {}",
                         e
@@ -114,7 +114,7 @@ impl QueryServiceImpl {
             .get("_source")
             .ok_or_else(|| anyhow!("[QueryServiceImpl->get_query_result] Missing '_source'"))?;
 
-        let source: S = serde_json::from_value(src_val.clone()).map_err(|e| {
+        let source: S = serde_json::from_value(src_val.to_owned()).map_err(|e| {
             anyhow!(
                 "[QueryServiceImpl->get_query_result] Failed to deserialize source: {}",
                 e
@@ -274,212 +274,61 @@ impl QueryService for QueryServiceImpl {
             0.0
         };
 
-        let mut result: LogIndexResult = LogIndexResult::new(index_name.to_string(), true, None, fluctuation_val, 0);
+        let mut result: LogIndexResult = LogIndexResult::new(index_name.to_string(), false, None, fluctuation_val, 0);
         
-        /* 4) 임계 초과 시 상세 샘플 조회해서 첨부 */
-        let search_query: Value = json!({
-            "query": {
-                "bool": {
-                    "filter": [
-                        {
-                            "range": {
-                                "timestamp": { "gte": prev_timestamp_utc, "lte": cur_timestamp_utc }
+        if fluctuation_val >= allowable {
+            
+            /* 4) 임계 초과 시 상세 샘플 조회해서 첨부 */
+            let search_query: Value = json!({
+                "query": {
+                    "bool": {
+                        "filter": [
+                            {
+                                "range": {
+                                    "timestamp": { "gte": prev_timestamp_utc, "lte": cur_timestamp_utc }
+                                }
+                            },
+                            {
+                                "term": {
+                                    "index_name.keyword": index_name
+                                }
                             }
-                        },
-                        {
-                            "term": {
-                                "index_name.keyword": index_name
-                            }
-                        }
-                    ]
+                        ]
+                    }
+                },
+                "sort": [{ "timestamp": { "order": "desc" } }]
+            });
+            
+            let response_body: Value = self
+                .es_conn
+                .get_search_query(&search_query, mon_index_name)
+                .await?;
+
+            let alert_index_formats: Vec<AlertIndexFormat> =
+                self.get_query_result_vec::<AlertIndexFormat, AlertIndex>(&response_body)?;
+            
+            let cur_index_cnt: usize = match alert_index_formats.get(0) {
+                Some(cur_index) => {
+                    *cur_index.alert_index().cnt()
+                },
+                None => {
+                    error!("[QueryServiceImpl->get_max_cnt_from_log_index] The first argument to alert_index_formats does not exist.");
+                    0
                 }
-            },
-            "sort": [{ "timestamp": { "order": "desc" } }]
-        });
+            };
 
-        let response_body: Value = self
-            .es_conn
-            .get_search_query(&search_query, mon_index_name)
-            .await?;
-        let alert_index_formats: Vec<AlertIndexFormat> =
-            self.get_query_result_vec::<AlertIndexFormat, AlertIndex>(&response_body)?;
-        
-        let cur_index_cnt: usize = match alert_index_formats.get(0) {
-            Some(cur_index) => {
-                *cur_index.alert_index().cnt()
-            },
-            None => {
-                error!("[QueryServiceImpl->get_max_cnt_from_log_index] The first argument to alert_index_formats does not exist.");
-                0
+            result.set_cur_cnt(cur_index_cnt);
+
+            let mut alert_indexes: Vec<AlertIndex> = Vec::new();
+
+            for alert_index_format in alert_index_formats {
+                alert_indexes.push(alert_index_format.alert_index);
             }
-        };
 
-        result.set_cur_cnt(cur_index_cnt);
+            result.set_alert_index_format(Some(alert_indexes));
 
-        let mut alert_indexes: Vec<AlertIndex> = Vec::new();
-
-        for alert_index_format in alert_index_formats {
-            alert_indexes.push(alert_index_format.alert_index);
         }
-
-        result.set_alert_index_format(Some(alert_indexes));
-
-        //result.set_alert_index_format(Some(test));
-
-        // match self.get_query_result::<AlertIndexFormat, AlertIndex>(&response_body) {
-        //     Ok(alert_index_format) => {
-        //         result = LogIndexResult::new(index_name.to_string(), true, Some(alert_index_format));
-        //     },
-        //     Err(e) => {
-        //         error!("[QueryServiceImpl->get_max_cnt_from_log_index] {:?}", e);
-        //     }
-        // }
-
-        //     let response_body: Value = es_client.get_search_query(&query, index_name).await?;
-        //     let err_alram_infos: Vec<ErrorAlarmInfoFormat> =
-        //         self.get_query_result_vec::<ErrorAlarmInfoFormat, ErrorAlarmInfo>(&response_body)?;
-
-        // result = LogIndexResult::new(index_name.to_string(), true, Some(alert_index_format));
-
-        // 아래가 진짜 적용되어야 할 것
-        // if fluctuation_val >= allowable {
-        //     let search_query: Value = json!({
-        //         "query": {
-        //             "range": {
-        //                 "timestamp": {
-        //                     "gte": prev_timestamp_utc,
-        //                     "lte": cur_timestamp_utc
-        //                 }
-        //             }
-        //         },
-        //         "size": 1,
-        //         "sort": [{ "timestamp": { "order": "desc" } }]
-        //     });
-
-        //     let response_body: Value = self
-        //         .es_conn
-        //         .get_search_query(&search_query, index_name)
-        //         .await?;
-        //     let alert_index_format: AlertIndexFormat =
-        //         self.get_query_result::<AlertIndexFormat, AlertIndex>(&response_body)?;
-
-        //     result = LogIndexResult::new(index_name.to_string(), true, Some(alert_index_format));
-        // }
 
         Ok(result)
     }
-
-    // #[doc = "색인 동작 로그를 가져오는 함수"]
-    // /// # Arguments
-    // /// * `query_index` - 쿼리의 대상이 되는 Elasticsearch 인덱스 이름
-    // /// * `index_name`  - 색인될 인덱스의 이름
-    // /// * `index_type`  - 정적색인인지 동적색인인지 구분하는 타입
-    // /// * `start_dt`    - 색인 시작 시각
-    // /// * `end_dt`      - 색인 종료 시각
-    // ///
-    // /// # Returns
-    // /// * Result<Vec<VectorIndexLog>, anyhow::Error>
-    // async fn get_indexing_movement_log(
-    //     &self,
-    //     query_index: &str,
-    //     index_name: &str,
-    //     index_type: &str,
-    //     start_dt: NaiveDateTime,
-    //     end_dt: NaiveDateTime,
-    // ) -> Result<VectorIndexLogFormat, anyhow::Error> {
-    //     let start_dt_str: String = get_str_from_naive_datetime(start_dt, "%Y-%m-%dT%H:%M:%SZ")?;
-    //     let end_dt_str: String = get_str_from_naive_datetime(end_dt, "%Y-%m-%dT%H:%M:%SZ")?;
-
-    //     let query: Value = json!({
-    //         "size": 1,                       /* 최신 한 건만 */
-    //         "track_total_hits": false,       /* 총건수 집계 불필요 - 성능상 좋음 */
-    //         "query": {
-    //             "bool": {
-    //                 "filter": [
-    //                     { "term":  { "index_name.keyword": index_name } },
-    //                     { "term":  { "state.keyword":      index_type } },
-    //                     { "range": { "timestamp": {
-    //                         "gte": start_dt_str,
-    //                         "lte": end_dt_str
-    //                     }}},
-    //                     { "match_phrase": { "message": "index worked" } }
-    //                 ]
-    //             }
-    //         },
-    //         "sort": [
-    //             { "timestamp": { "order": "desc" } } /* 최신순 */
-    //         ]
-    //     });
-
-    //     let es_client: ElasticConnGuard = get_elastic_guard_conn().await?;
-    //     let response_body: Value = es_client.get_search_query(&query, query_index).await?;
-
-    //     let result: VectorIndexLogFormat =
-    //         self.get_query_result::<VectorIndexLogFormat, VectorIndexLog>(&response_body)?;
-
-    //     Ok(result)
-    // }
-
-    // #[doc = "색인 실패 정보를 모니터링 Elasitcsearch 인덱스에 색인해주는 함수"]
-    // /// # Arguments
-    // /// * `index_name`  - 에러메시지 정보가 들어있는 인덱스 이름
-    // ///
-    // /// # Returns
-    // /// * Result<(), anyhow::Error>
-    // async fn post_indexing_error_info(
-    //     &self,
-    //     index_name: &str,
-    //     error_alaram_info: ErrorAlarmInfo,
-    // ) -> Result<(), anyhow::Error> {
-    //     let es_client: ElasticConnGuard = get_elastic_guard_conn().await?;
-
-    //     es_client
-    //         .post_query_struct(&error_alaram_info, index_name)
-    //         .await?;
-
-    //     Ok(())
-    // }
-
-    // #[doc = "색인 에러 정보들을 반환해주는 함수"]
-    // /// # Arguments
-    // /// * `index_name`  - 에러메시지 정보가 들어있는 인덱스 이름
-    // ///
-    // /// # Returns
-    // /// * Result<Vec<ErrorAlarmInfo>, anyhow::Error>
-    // async fn get_error_alarm_infos(
-    //     &self,
-    //     index_name: &str,
-    // ) -> Result<Vec<ErrorAlarmInfoFormat>, anyhow::Error> {
-    //     let es_client: ElasticConnGuard = get_elastic_guard_conn().await?;
-
-    //     let query: Value = json!({
-    //         "query": {
-    //             "match_all": {}
-    //         },
-    //         "size": 1000
-    //     });
-
-    //     let response_body: Value = es_client.get_search_query(&query, index_name).await?;
-    //     let err_alram_infos: Vec<ErrorAlarmInfoFormat> =
-    //         self.get_query_result_vec::<ErrorAlarmInfoFormat, ErrorAlarmInfo>(&response_body)?;
-
-    //     Ok(err_alram_infos)
-    // }
-
-    // #[doc = "특정 인덱스의 특정 문서를 삭제해주는 함수"]
-    // /// # Arguments
-    // /// * `index_name` - 삭제 대상이 되는 인덱스 이름
-    // /// * `doc_id` - 삭제할 문서의 id
-    // ///
-    // /// # Returns
-    // /// * Result<Vec<ErrorAlarmInfo>, anyhow::Error>
-    // async fn delete_index_by_doc(
-    //     &self,
-    //     index_name: &str,
-    //     doc_id: &str,
-    // ) -> Result<(), anyhow::Error> {
-    //     let es_client: ElasticConnGuard = get_elastic_guard_conn().await?;
-    //     es_client.delete_query(doc_id, index_name).await?;
-    //     Ok(())
-    // }
 }

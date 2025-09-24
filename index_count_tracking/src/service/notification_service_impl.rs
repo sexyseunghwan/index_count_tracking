@@ -26,18 +26,17 @@ pub struct NotificationServiceImpl {
 
 impl NotificationServiceImpl {
     #[doc = "NotificationServicePub 구조체의 생성자"]
-    pub fn new() -> Self {
-        let receiver_email_list: ReceiverEmailConfig =
-            read_toml_from_file::<ReceiverEmailConfig>(&EMAIL_RECEIVER_PATH)
-                .unwrap_or_else(|e| {
-                    let err_msg: &str = "[ERROR][NotificationServicePub->new] Failed to retrieve information 'receiver_email_list'.";
-                    error!("{} : {:?}", err_msg, e);
-                    panic!("{} : {:?}", err_msg, e)
-                });
+    pub fn new() -> anyhow::Result<Self> {
+        let receiver_email_list = read_toml_from_file::<ReceiverEmailConfig>(&EMAIL_RECEIVER_PATH)
+            .map_err(|e| {
+                let err_msg = "[ERROR][NotificationServiceImpl->new] Failed to retrieve information 'receiver_email_list'.";
+                error!("{} : {:?}", err_msg, e);
+                anyhow!("{} : {:?}", err_msg, e)
+            })?;
 
-        NotificationServiceImpl {
+        Ok(NotificationServiceImpl {
             receiver_email_list,
-        }
+        })
     }
 
     #[doc = "수신자에게 이메일을 보내주는 함수"]
