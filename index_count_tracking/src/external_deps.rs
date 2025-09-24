@@ -15,8 +15,8 @@ pub use rand::{SeedableRng, prelude::SliceRandom, rngs::StdRng};
 pub use reqwest::Client;
 pub use urlencoding::encode;
 
-pub use lettre::Message;
-pub use lettre::message::MultiPart;
-pub use lettre::message::SinglePart;
-pub use lettre::transport::smtp::authentication::Credentials;
-pub use lettre::AsyncSmtpTransport;
+pub use lettre::{
+    Message, AsyncSmtpTransport,
+    message::{MultiPart, SinglePart},
+    transport::smtp::authentication::Credentials
+};

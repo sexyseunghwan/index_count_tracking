@@ -4,17 +4,12 @@ use crate::traits::{repository_traits::es_repository::*, service_traits::query_s
 
 use crate::repository::es_repository_impl::*;
 
-// use crate::utils_modules::time_utils::*;
 use crate::utils_modules::{time_utils::*, traits::*};
 
 use crate::model::index::{alert_index::*, alert_index_format::*, index_config::*};
 
 use crate::dto::log_index_result::*;
 
-// use crate::model::{
-//     error_alarm_info::*, error_alarm_info_format::*, vector_index_log::*,
-//     vector_index_log_format::*,
-// };
 
 #[derive(Debug, new)]
 pub struct QueryServiceImpl {
@@ -168,6 +163,83 @@ impl QueryServiceImpl {
         let v: Option<f64> = v.and_then(|x| if x.is_finite() { Some(x) } else { None });
         Ok(v)
     }
+
+    async fn fetch_min_max_values(
+        &self,
+        mon_index_name: &str,
+        index_name: &str,
+        gte: &str,
+        lte: &str,
+    ) -> anyhow::Result<(f64, f64)> {
+        let max_val = self
+            .fetch_agg_value_f64(
+                mon_index_name,
+                index_name,
+                gte,
+                lte,
+                "max_value_in_range",
+                json!({ "max": { "field": "cnt" } }),
+            )
+            .await?
+            .unwrap_or(0.0);
+
+        let min_val = self
+            .fetch_agg_value_f64(
+                mon_index_name,
+                index_name,
+                gte,
+                lte,
+                "min_value_in_range",
+                json!({ "min": { "field": "cnt" } }),
+            )
+            .await?
+            .unwrap_or(0.0);
+
+        Ok((min_val, max_val))
+    }
+
+    fn calculate_fluctuation(min_val: f64, max_val: f64) -> f64 {
+        if min_val > 0.0 {
+            ((max_val - min_val) / min_val) * 100.0
+        } else {
+            0.0
+        }
+    }
+
+    async fn fetch_alert_data(
+        &self,
+        mon_index_name: &str,
+        index_name: &str,
+        prev_timestamp_utc: &str,
+        cur_timestamp_utc: &str,
+    ) -> anyhow::Result<Vec<AlertIndexFormat>> {
+        let search_query: Value = json!({
+            "query": {
+                "bool": {
+                    "filter": [
+                        {
+                            "range": {
+                                "timestamp": { "gte": prev_timestamp_utc, "lte": cur_timestamp_utc }
+                            }
+                        },
+                        {
+                            "term": {
+                                "index_name.keyword": index_name
+                            }
+                        }
+                    ]
+                }
+            },
+            "sort": [{ "timestamp": { "order": "desc" } }]
+        });
+
+        let response_body: Value = self
+            .es_conn
+            .get_search_query(&search_query, mon_index_name)
+            .await?;
+
+        self.get_query_result_vec::<AlertIndexFormat, AlertIndex>(&response_body)
+    }
 }
 
 #[async_trait]
@@ -229,7 +301,7 @@ impl QueryService for QueryServiceImpl {
         * `LogIndexResult` - 인덱스명, 정상여부, (조건 충족 시) AlertIndexFormat 포함
         * `anyhow::Error` - ES 조회 실패 또는 파싱 실패 시
     "#]
-    async fn get_max_cnt_from_log_index(
+    async fn get_alert_infos_from_log_index(
         &self,
         mon_index_name: &str,
         index_config: &IndexConfig,
@@ -241,92 +313,35 @@ impl QueryService for QueryServiceImpl {
 
         let prev_timestamp_utc: String = calc_time_window(cur_timestamp_utc, agg_term)?;
 
-        /* 1) 윈도우 내 max(cnt) */
-        let maybe_max_val: f64 = self
-            .fetch_agg_value_f64(
-                mon_index_name,
-                index_name,
-                &prev_timestamp_utc,
-                cur_timestamp_utc,
-                "max_value_in_range",
-                json!({ "max": { "field": "cnt" } }),
-            )
-            .await?
-            .unwrap_or(0.0);
+        let (min_val, max_val) = self
+            .fetch_min_max_values(mon_index_name, index_name, &prev_timestamp_utc, cur_timestamp_utc)
+            .await?;
 
-        /* 2) 윈도우 내 min(cnt) */
-        let maybe_min_val: f64 = self
-            .fetch_agg_value_f64(
-                mon_index_name,
-                index_name,
-                &prev_timestamp_utc,
-                cur_timestamp_utc,
-                "min_value_in_range",
-                json!({ "min": { "field": "cnt" } }),
-            )
-            .await?
-            .unwrap_or(0.0);
-
-        /* 3) 변화율 계산 (min=0 방지) */
-        let fluctuation_val: f64 = if maybe_min_val > 0.0 {
-            ((maybe_max_val - maybe_min_val) / maybe_min_val) * 100.0
-        } else {
-            0.0
-        };
+        let fluctuation_val: f64 = Self::calculate_fluctuation(min_val, max_val);
 
         let mut result: LogIndexResult = LogIndexResult::new(index_name.to_string(), false, None, fluctuation_val, 0);
-        
+
         if fluctuation_val >= allowable {
-            
-            /* 4) 임계 초과 시 상세 샘플 조회해서 첨부 */
-            let search_query: Value = json!({
-                "query": {
-                    "bool": {
-                        "filter": [
-                            {
-                                "range": {
-                                    "timestamp": { "gte": prev_timestamp_utc, "lte": cur_timestamp_utc }
-                                }
-                            },
-                            {
-                                "term": {
-                                    "index_name.keyword": index_name
-                                }
-                            }
-                        ]
-                    }
-                },
-                "sort": [{ "timestamp": { "order": "desc" } }]
-            });
-            
-            let response_body: Value = self
-                .es_conn
-                .get_search_query(&search_query, mon_index_name)
+            let alert_index_formats: Vec<AlertIndexFormat> = self
+                .fetch_alert_data(mon_index_name, index_name, &prev_timestamp_utc, cur_timestamp_utc)
                 .await?;
 
-            let alert_index_formats: Vec<AlertIndexFormat> =
-                self.get_query_result_vec::<AlertIndexFormat, AlertIndex>(&response_body)?;
-            
-            let cur_index_cnt: usize = match alert_index_formats.get(0) {
-                Some(cur_index) => {
-                    *cur_index.alert_index().cnt()
-                },
-                None => {
-                    error!("[QueryServiceImpl->get_max_cnt_from_log_index] The first argument to alert_index_formats does not exist.");
+            let cur_index_cnt: usize = alert_index_formats
+                .first()
+                .map(|format| *format.alert_index().cnt())
+                .unwrap_or_else(|| {
+                    error!("[QueryServiceImpl->get_alert_infos_from_log_index] No alert index formats found");
                     0
-                }
-            };
+                });
 
             result.set_cur_cnt(cur_index_cnt);
 
-            let mut alert_indexes: Vec<AlertIndex> = Vec::new();
-
-            for alert_index_format in alert_index_formats {
-                alert_indexes.push(alert_index_format.alert_index);
-            }
+            let alert_indexes: Vec<AlertIndex> = alert_index_formats
+                .into_iter()
+                .map(|format| format.alert_index)
+                .collect();
 
             result.set_alert_index_format(Some(alert_indexes));
-
         }
 
         Ok(result)

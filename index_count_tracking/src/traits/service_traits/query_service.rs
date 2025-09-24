@@ -13,7 +13,7 @@ pub trait QueryService {
         index_name: &str,
         alert_index: &AlertIndex,
     ) -> anyhow::Result<()>;
-    async fn get_max_cnt_from_log_index(
+    async fn get_alert_infos_from_log_index(
         &self,
         mon_index_name: &str,
         index_config: &IndexConfig,

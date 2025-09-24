@@ -96,7 +96,7 @@ impl<N: NotificationService, TQ: QueryService, MQ: QueryService> MainController<
         for index_config in index_list.index() {
             let log_index_res: LogIndexResult = self
                 .mon_query_service
-                .get_max_cnt_from_log_index(mon_index_name, index_config, &cur_timestamp_utc)
+                .get_alert_infos_from_log_index(mon_index_name, index_config, &cur_timestamp_utc)
                 .await?;
 
             if log_index_res.alert_yn == true {
