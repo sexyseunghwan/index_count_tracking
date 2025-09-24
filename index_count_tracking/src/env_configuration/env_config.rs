@@ -28,6 +28,6 @@ pub static SERVER_CONFIG_PATH: once_lazy<String> =
 pub static HTML_TEMPLATE_PATH: once_lazy<String> =
     once_lazy::new(|| get_env_or_panic("HTML_TEMPLATE_PATH"));
 
-#[doc = "Function to globally initialize the 'INDEX_ALERT_TEMPLATE_PATH' variable"]
-pub static INDEX_ALERT_TEMPLATE_PATH: once_lazy<String> =
-    once_lazy::new(|| String::from("html/index_alert_template.html"));
+// #[doc = "Function to globally initialize the 'INDEX_ALERT_TEMPLATE_PATH' variable"]
+// pub static INDEX_ALERT_TEMPLATE_PATH: once_lazy<String> =
+//     once_lazy::new(|| String::from("html/index_alert_template.html"));

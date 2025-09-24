@@ -105,7 +105,9 @@ impl QueryServiceImpl {
         let id: String = first_hit
             .get("_id")
             .and_then(|v| v.as_str())
-            .ok_or_else(|| anyhow!("[QueryServiceImpl->get_query_result] Missing or invalid '_id'"))?
+            .ok_or_else(|| {
+                anyhow!("[QueryServiceImpl->get_query_result] Missing or invalid '_id'")
+            })?
             .to_string();
 
         let src_val: &Value = first_hit
@@ -140,7 +142,7 @@ impl QueryServiceImpl {
                         {
                             "range": {
                                 "timestamp": { "gte": gte, "lte": lte }
-                            } 
+                            }
                         },
                         {
                             "term": {
@@ -149,14 +151,17 @@ impl QueryServiceImpl {
                         }
                     ]
                 }
-                
+
             },
             "aggs": {
                 agg_name: agg_body
             }
         });
 
-        let resp: Value = self.es_conn.get_search_query(&query, mon_index_name).await?;
+        let resp: Value = self
+            .es_conn
+            .get_search_query(&query, mon_index_name)
+            .await?;
         let v: Option<f64> = resp["aggregations"][agg_name]["value"].as_f64();
 
         /* NaN/무한대 방어 */
@@ -261,7 +266,7 @@ impl QueryService for QueryServiceImpl {
             )
             .await?
             .unwrap_or(0.0);
-    
+
         /* 3) 변화율 계산 (min=0 방지) */
         let fluctuation_val: f64 = if maybe_min_val > 0.0 {
             ((maybe_max_val - maybe_min_val) / maybe_min_val) * 100.0
@@ -269,7 +274,7 @@ impl QueryService for QueryServiceImpl {
             0.0
         };
 
-        let mut result: LogIndexResult = LogIndexResult::new(index_name.to_string(), true, None);
+        let mut result: LogIndexResult = LogIndexResult::new(index_name.to_string(), true, None, fluctuation_val, 0);
         
         /* 4) 임계 초과 시 상세 샘플 조회해서 첨부 */
         let search_query: Value = json!({
@@ -291,11 +296,26 @@ impl QueryService for QueryServiceImpl {
             },
             "sort": [{ "timestamp": { "order": "desc" } }]
         });
+
+        let response_body: Value = self
+            .es_conn
+            .get_search_query(&search_query, mon_index_name)
+            .await?;
+        let alert_index_formats: Vec<AlertIndexFormat> =
+            self.get_query_result_vec::<AlertIndexFormat, AlertIndex>(&response_body)?;
         
-        
-        let response_body: Value = self.es_conn.get_search_query(&search_query, mon_index_name).await?;
-        let alert_index_formats: Vec<AlertIndexFormat> = self.get_query_result_vec::<AlertIndexFormat, AlertIndex>(&response_body)?;
-        
+        let cur_index_cnt: usize = match alert_index_formats.get(0) {
+            Some(cur_index) => {
+                *cur_index.alert_index().cnt()
+            },
+            None => {
+                error!("[QueryServiceImpl->get_max_cnt_from_log_index] The first argument to alert_index_formats does not exist.");
+                0
+            }
+        };
+
+        result.set_cur_cnt(cur_index_cnt);
+
         let mut alert_indexes: Vec<AlertIndex> = Vec::new();
 
         for alert_index_format in alert_index_formats {
@@ -304,7 +324,6 @@ impl QueryService for QueryServiceImpl {
 
         result.set_alert_index_format(Some(alert_indexes));
 
-        
         //result.set_alert_index_format(Some(test));
 
         // match self.get_query_result::<AlertIndexFormat, AlertIndex>(&response_body) {
@@ -315,13 +334,13 @@ impl QueryService for QueryServiceImpl {
         //         error!("[QueryServiceImpl->get_max_cnt_from_log_index] {:?}", e);
         //     }
         // }
-        
+
         //     let response_body: Value = es_client.get_search_query(&query, index_name).await?;
         //     let err_alram_infos: Vec<ErrorAlarmInfoFormat> =
         //         self.get_query_result_vec::<ErrorAlarmInfoFormat, ErrorAlarmInfo>(&response_body)?;
 
         // result = LogIndexResult::new(index_name.to_string(), true, Some(alert_index_format));
-        
+
         // 아래가 진짜 적용되어야 할 것
         // if fluctuation_val >= allowable {
         //     let search_query: Value = json!({
@@ -400,7 +419,7 @@ impl QueryService for QueryServiceImpl {
 
     //     Ok(result)
     // }
-    
+
     // #[doc = "색인 실패 정보를 모니터링 Elasitcsearch 인덱스에 색인해주는 함수"]
     // /// # Arguments
     // /// * `index_name`  - 에러메시지 정보가 들어있는 인덱스 이름

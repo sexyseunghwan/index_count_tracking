@@ -29,13 +29,14 @@ impl<N: NotificationService, TQ: QueryService, MQ: QueryService> MainController<
         /* 1. 인덱스 문서 개수 정보 저장 */
         self.save_index_cnt_infos(&index_list, mon_index_name)
             .await?;
-        
+
         /* 2. 인덱스 문서 개수 검증 */
-        let index_doc_verification: Vec<LogIndexResult> = self.verify_index_cnt(mon_index_name, &index_list).await?;
+        let index_doc_verification: Vec<LogIndexResult> =
+            self.verify_index_cnt(mon_index_name, &index_list).await?;
 
         /* 3. 검증 결과를 바탕으로 알람을 보내주는 로직 */
         self.alert_index_status(&index_doc_verification).await?;
-        
+
         // if index_doc_verification.len() > 0 {
         //     self.alert_index_status(&index_doc_verification).await?;
         // }
@@ -101,7 +102,7 @@ impl<N: NotificationService, TQ: QueryService, MQ: QueryService> MainController<
                 .post_log_index(mon_index_name, &alert_index)
                 .await?;
         }
-        
+
         Ok(())
     }
 
@@ -123,27 +124,36 @@ impl<N: NotificationService, TQ: QueryService, MQ: QueryService> MainController<
 
             if log_index_res.alert_yn == true {
                 log_index_results.push(log_index_res);
-            }   
+            }
         }
 
         Ok(log_index_results)
     }
-    
+
     #[doc = "인덱스 문서 개수 이상 상황 알람 발송"]
     async fn alert_index_status(&self, log_index_res: &[LogIndexResult]) -> anyhow::Result<()> {
-        info!("Sending index alert for {} problematic indices", log_index_res.len());
+        info!(
+            "Sending index alert for {} problematic indices",
+            log_index_res.len()
+        );
 
-        match self.notification_service.send_index_alert_message(log_index_res).await {
+        match self
+            .notification_service
+            .send_index_alert_message(log_index_res)
+            .await
+        {
             Ok(_) => {
                 info!("Successfully sent index alert notifications");
             }
             Err(e) => {
-                error!("[ERROR][MainController->alert_index_status] Failed to send alert notifications: {:?}", e);
+                error!(
+                    "[ERROR][MainController->alert_index_status] Failed to send alert notifications: {:?}",
+                    e
+                );
                 return Err(e);
             }
         }
 
         Ok(())
     }
-
 }

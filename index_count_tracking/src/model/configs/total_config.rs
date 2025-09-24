@@ -1,7 +1,7 @@
 use crate::common::*;
 
 use crate::model::configs::{
-    elastic_server_config::*, rdb_config::*, system_config::*, telegram_config::*,
+    elastic_server_config::*, rdb_config::*, system_config::*, telegram_config::*, smtp_config::*
 };
 
 use crate::utils_modules::io_utils::*;
@@ -24,6 +24,7 @@ pub struct TotalConfig {
     pub sqlserver: RdbConfig,
     pub telegram: TelegramConfig,
     pub system: SystemConfig,
+    pub smtp: SmtpConfig
 }
 
 #[doc = "Elasticsearch config 정보"]
@@ -49,6 +50,11 @@ pub fn get_sqlserver_config_info() -> &'static RdbConfig {
 #[doc = "system 설정 정보"]
 pub fn get_system_config_info() -> &'static SystemConfig {
     &TOTAL_CONFIG.system
+}
+
+#[doc = "system 설정 정보"]
+pub fn get_smtp_config_info() -> &'static SmtpConfig {
+    &TOTAL_CONFIG.smtp
 }
 
 impl TotalConfig {
