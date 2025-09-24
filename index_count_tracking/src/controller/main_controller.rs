@@ -101,7 +101,7 @@ impl<N: NotificationService, TQ: QueryService, MQ: QueryService> MainController<
                 .post_log_index(mon_index_name, &alert_index)
                 .await?;
         }
-
+        
         Ok(())
     }
 

@@ -185,31 +185,36 @@ impl NotificationServiceImpl {
 
     //     Ok(())
     // }
-    #[doc = ""]
+    #[doc = "색인 카운트 알람을 텔레그램으로 전송하는 함수 (메시지 길이 제한을 고려한 chunk 방식)"]
     async fn send_telegram_index_alert(&self, log_index_results: &[LogIndexResult]) -> anyhow::Result<()> {
         let tele_repo: Arc<TelebotRepositoryImpl> = get_telegram_repo();
+        let system_config: &'static SystemConfig = get_system_config_info();
+        let msg_chunk_size: usize = *system_config.message_chunk_size();
 
-        let mut msg_format: String = String::from("🚨 [Index Count Alert] 🚨\n\n");
+        /* LogIndexResult를 chunk 단위로 처리 */ 
+        for chunk in log_index_results.chunks(msg_chunk_size) {
+            let mut msg_format: String = String::from("🚨 [Index Count Alert] 🚨\n\n");
 
-        for log_result in log_index_results {
+            for log_result in chunk {
+                msg_format.push_str(&format!("📌📌📌📌📌 {} 📌📌📌📌📌\n", log_result.index_name()));
 
-            msg_format.push_str(&format!("📌📌📌📌📌 [{}] 📌📌📌📌📌\n", log_result.index_name()));
-
-            if let Some(alert_formats) = log_result.alert_index_format() {
-                for alert_format in alert_formats {
-                    msg_format.push_str(&format!(
-                        "📊 Index: {}\n💾 Count: {}\n🕐 Time: {}\n\n",
-                        alert_format.index_name(),
-                        alert_format.cnt(),
-                        alert_format.timestamp()
-                    ));
+                if let Some(alert_formats) = log_result.alert_index_format() {
+                    for alert_format in alert_formats {
+                        msg_format.push_str(&format!(
+                            "📊 Index: {}\n💾 Count: {}\n🕐 Time: {}\n\n",
+                            alert_format.index_name(),
+                            alert_format.cnt(),
+                            alert_format.timestamp()
+                        ));
+                    }
                 }
             }
-        }
-        
-        msg_format.push_str("⚠️ Please check the index status immediately!");
 
-        tele_repo.bot_send(&msg_format).await?;
+            msg_format.push_str("⚠️ Please check the index status immediately!");
+
+            /* 각 chunk별로 메시지 전송 */ 
+            tele_repo.bot_send(&msg_format).await?;
+        }
 
         Ok(())
     }
