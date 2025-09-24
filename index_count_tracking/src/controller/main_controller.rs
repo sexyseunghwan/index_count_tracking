@@ -32,9 +32,10 @@ impl<N: NotificationService, TQ: QueryService, MQ: QueryService> MainController<
         
         /* 2. 인덱스 문서 개수 검증 */
         let index_doc_verification: Vec<LogIndexResult> = self.verify_index_cnt(mon_index_name, &index_list).await?;
-        
+
         /* 3. 검증 결과를 바탕으로 알람을 보내주는 로직 */
-        //self.alert_index_status(&index_doc_verification).await?;
+        self.alert_index_status(&index_doc_verification).await?;
+        
         // if index_doc_verification.len() > 0 {
         //     self.alert_index_status(&index_doc_verification).await?;
         // }

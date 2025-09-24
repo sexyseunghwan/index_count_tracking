@@ -270,7 +270,7 @@ impl QueryService for QueryServiceImpl {
         };
 
         let mut result: LogIndexResult = LogIndexResult::new(index_name.to_string(), true, None);
-
+        
         /* 4) 임계 초과 시 상세 샘플 조회해서 첨부 */
         let search_query: Value = json!({
             "query": {
@@ -292,10 +292,21 @@ impl QueryService for QueryServiceImpl {
             "sort": [{ "timestamp": { "order": "desc" } }]
         });
         
-        //AlertIndexFormat
-        let response_body: Value = self.es_conn.get_search_query(&search_query, mon_index_name).await?;
-        let test: Vec<AlertIndexFormat> = self.get_query_result_vec::<AlertIndexFormat, AlertIndex>(&response_body)?;
         
+        let response_body: Value = self.es_conn.get_search_query(&search_query, mon_index_name).await?;
+        let alert_index_formats: Vec<AlertIndexFormat> = self.get_query_result_vec::<AlertIndexFormat, AlertIndex>(&response_body)?;
+        
+        let mut alert_indexes: Vec<AlertIndex> = Vec::new();
+
+        for alert_index_format in alert_index_formats {
+            alert_indexes.push(alert_index_format.alert_index);
+        }
+
+        result.set_alert_index_format(Some(alert_indexes));
+
+        
+        //result.set_alert_index_format(Some(test));
+
         // match self.get_query_result::<AlertIndexFormat, AlertIndex>(&response_body) {
         //     Ok(alert_index_format) => {
         //         result = LogIndexResult::new(index_name.to_string(), true, Some(alert_index_format));
@@ -389,7 +400,7 @@ impl QueryService for QueryServiceImpl {
 
     //     Ok(result)
     // }
-
+    
     // #[doc = "색인 실패 정보를 모니터링 Elasitcsearch 인덱스에 색인해주는 함수"]
     // /// # Arguments
     // /// * `index_name`  - 에러메시지 정보가 들어있는 인덱스 이름

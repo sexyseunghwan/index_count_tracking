@@ -192,14 +192,18 @@ impl NotificationServiceImpl {
         let mut msg_format: String = String::from("🚨 [Index Count Alert] 🚨\n\n");
 
         for log_result in log_index_results {
-            if let Some(alert_format) = log_result.alert_index_format() {
-                let alert_index: &AlertIndex = alert_format.alert_index();
-                msg_format.push_str(&format!(
-                    "📊 Index: {}\n💾 Count: {}\n🕐 Time: {}\n\n",
-                    alert_index.index_name(),
-                    alert_index.cnt(),
-                    alert_index.timestamp()
-                ));
+
+            msg_format.push_str(&format!("📌📌📌📌📌 [{}] 📌📌📌📌📌\n", log_result.index_name()));
+
+            if let Some(alert_formats) = log_result.alert_index_format() {
+                for alert_format in alert_formats {
+                    msg_format.push_str(&format!(
+                        "📊 Index: {}\n💾 Count: {}\n🕐 Time: {}\n\n",
+                        alert_format.index_name(),
+                        alert_format.cnt(),
+                        alert_format.timestamp()
+                    ));
+                }
             }
         }
         
@@ -253,25 +257,28 @@ impl NotificationServiceImpl {
     }
 
     async fn generate_alert_rows(&self, log_index_results: &[LogIndexResult]) -> anyhow::Result<String> {
-        let mut rows = String::new();
+        let mut rows: String = String::new();
 
         for log_result in log_index_results {
-            if let Some(alert_format) = log_result.alert_index_format() {
-                let alert_index = alert_format.alert_index();
-                let history_table = self.generate_history_table_html(alert_index.index_name()).await?;
+            if let Some(alert_formats) = log_result.alert_index_format() {
+                
+                for alert_format in alert_formats {
+                    let history_table = self.generate_history_table_html(alert_format.index_name()).await?;
 
-                rows.push_str(&format!(
-                    r#"<tr>
-                        <td class="index-name">{}</td>
-                        <td class="count-change">{}</td>
-                        <td class="timestamp">{}</td>
-                        <td>{}</td>
-                    </tr>"#,
-                    alert_index.index_name(),
-                    alert_index.cnt(),
-                    alert_index.timestamp(),
-                    history_table
-                ));
+                    rows.push_str(&format!(
+                        r#"<tr>
+                            <td class="index-name">{}</td>
+                            <td class="count-change">{}</td>
+                            <td class="timestamp">{}</td>
+                            <td>{}</td>
+                        </tr>"#,
+                        alert_format.index_name(),
+                        alert_format.cnt(),
+                        alert_format.timestamp(),
+                        history_table
+                    ));
+                }
+                
             }
         }
 
