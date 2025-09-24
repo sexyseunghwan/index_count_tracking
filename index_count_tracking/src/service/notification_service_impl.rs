@@ -1,10 +1,5 @@
 use crate::common::*;
 
-// use crate::model::{
-//     elastic_server_config::*, error_alarm_info::*, error_alarm_info_format::*,
-//     receiver_email_config::*, system_config::*, total_config::*,
-// };
-
 use crate::model::{
     configs::{
         elastic_server_config::*, receiver_email_config::*, system_config::*, total_config::*, smtp_config::*
@@ -132,141 +127,7 @@ impl NotificationServiceImpl {
         Ok(())
     }
 
-    // #[doc = "색인 실패별 로그들을 완전실패/부분실패로 나눠주는 함수"]
-    // /// # Arguments
-    // /// * `error_alaram_infos` - 실패한 색인 정보
-    // ///
-    // /// # Returns
-    // /// * Result<(), anyhow::Error>
-    // fn get_error_clasification(
-    //     &self,
-    //     error_alaram_info: &ErrorAlarmInfo,
-    //     err_alram_map: &mut HashMap<String, Vec<String>>,
-    // ) -> Result<(), anyhow::Error> {
-    //     let mut send_msg: String = String::from("");
-    //     send_msg.push_str(&format!(
-    //         " index name: {}\n",
-    //         error_alaram_info.index_name()
-    //     ));
-
-    //     send_msg.push_str(&format!(
-    //         "   - indexing type: {}\n",
-    //         error_alaram_info.index_type()
-    //     ));
-
-    //     let key_name: String = if error_alaram_info.error_type() == "Full Error" {
-    //         String::from("Full Error")
-    //     } else {
-    //         send_msg.push_str(&format!(
-    //             "   - index cnt (declare cnt): {} ({})\n",
-    //             error_alaram_info
-    //                 .indexing_cnt_num
-    //                 .to_formatted_string(&Locale::en),
-    //             error_alaram_info
-    //                 .declare_index_size
-    //                 .to_formatted_string(&Locale::en)
-    //         ));
-    //         String::from("Partial Error")
-    //     };
-
-    //     err_alram_map
-    //         .entry(key_name.clone())
-    //         .or_default()
-    //         .push(send_msg);
-
-    //     Ok(())
-    // }
-
-    // #[doc = "색인이 실패했을 때, Telegram bot 을 통해서 알람을 보내주는 함수"]
-    // /// # Arguments
-    // /// * `error_alaram_infos` - 실패한 색인 정보들
-    // ///
-    // /// # Returns
-    // /// * Result<(), anyhow::Error>
-    // async fn send_indexing_failed_msg(
-    //     &self,
-    //     error_alaram_infos: &[ErrorAlarmInfoFormat],
-    // ) -> Result<(), anyhow::Error> {
-    //     let tele_repo: Arc<TelebotRepositoryImpl> = get_telegram_repo();
-
-    //     let system_config: &'static SystemConfig= get_system_config_info();
-    //     let msg_chunk_size: usize = *system_config.message_chunk_size();
-
-    //     let mut err_alram_map: HashMap<String, Vec<String>> = HashMap::new();
-
-    //     for chunk in error_alaram_infos.chunks(msg_chunk_size) {
-    //         for item in chunk {
-    //             self.get_error_clasification(item.error_alarm_info(), &mut err_alram_map)?;
-    //         }
-
-    //         let mut msg_format: String = String::from("[Elasticsearch Indexing Error!]\n");
-
-    //         for (key, value) in err_alram_map {
-    //             let error_type: String = key;
-    //             let error_map: Vec<String> = value;
-
-    //             msg_format.push_str(format!("[{}]\n", error_type).as_str());
-
-    //             for err_msg in error_map {
-    //                 msg_format.push_str(format!("{}\n", err_msg).as_str());
-    //             }
-    //         }
-
-    //         /* Send Message */
-    //         tele_repo.bot_send(&msg_format).await?;
-
-    //         err_alram_map = HashMap::new(); /* Clear HashMap */
-    //     }
-
-    //     Ok(())
-    // }
-
-    // #[doc = "색인이 실패했을 때, mail 을 통해서 알람을 보내주는 함수"]
-    // /// # Arguments
-    // /// * `error_alaram_infos` - 실패한 색인 정보들
-    // ///
-    // /// # Returns
-    // /// * Result<(), anyhow::Error>
-    // async fn send_mail_to_receivers(
-    //     &self,
-    //     error_alarm_infos: &[ErrorAlarmInfoFormat],
-    // ) -> Result<(), anyhow::Error> {
-    //     let elastic_config: &'static ElasticServerConfig = get_mon_elastic_config_info();
-
-    //     /* receiver email list */
-    //     let receiver_email_list: &Vec<ReceiverEmail> = &self.receiver_email_list().emails;
-
-    //     let email_subject: String = String::from("[Elasticsearch] Indexing ERROR Alarm");
-    //     let mut inner_template: String = String::from("");
-    //     let html_template: String = fs::read_to_string(Path::new(HTML_TEMPLATE_PATH.as_str()))?;
-
-    //     for err_info in error_alarm_infos {
-    //         let err_info_tag: String = err_info.error_alarm_info().convert_email_struct()?;
-    //         inner_template.push_str(&err_info_tag);
-    //     }
-
-    //     let html_content: String = html_template
-    //         .replace("{cluster_name}", elastic_config.elastic_cluster_name())
-    //         .replace("{index_list}", &inner_template);
-
-    //     let sql_conn: Arc<SqlServerRepositoryImpl> = get_sqlserver_repo();
-
-    //     for receiver in receiver_email_list {
-    //         match sql_conn
-    //             .execute_imailer_procedure(receiver.email_id(), &email_subject, &html_content)
-    //             .await
-    //         {
-    //             Ok(_) => {
-    //                 info!("Successfully sent mail to {}", receiver.email_id());
-    //             }
-    //             Err(e) => {
-    //                 error!("[ERROR][NotificationServicePub->send_mail_to_receivers] Failed sent mail to {} : {:?}", receiver.email_id(), e);
-    //             }
-    //         }
-    //     }
-
-    //     Ok(())
-    // }
+    
     #[doc = "색인 카운트 알람을 텔레그램으로 전송하는 함수 (메시지 길이 제한을 고려한 chunk 방식)"]
     async fn send_telegram_index_alert(
         &self,
@@ -282,7 +143,7 @@ impl NotificationServiceImpl {
 
             for log_result in chunk {
                 msg_format.push_str(&format!(
-                    "📌📌📌📌📌 {} 📌📌📌📌📌\n",
+                    "📌 {} 📌\n",
                     log_result.index_name()
                 ));
 
@@ -319,34 +180,33 @@ impl NotificationServiceImpl {
             String::from("[Elasticsearch] Index Document Count Change Detected");
 
         let html_content: String = self
-            .generate_index_alert_html(log_index_results, elastic_config)
-            .await?;
+            .generate_index_alert_html(log_index_results, elastic_config)?;
 
-        //SMTP 버전
-        self.send_message_to_receivers_smtp(&email_subject, &html_content).await?;
+        /* SMTP 버전 -> 온라인망 사용용*/
+        //self.send_message_to_receivers_smtp(&email_subject, &html_content).await?;
         
-        // SP 버전
-        // let sql_conn: Arc<SqlServerRepositoryImpl> = get_sqlserver_repo();
+        /* SP 버전 */ 
+        let sql_conn: Arc<SqlServerRepositoryImpl> = get_sqlserver_repo();
 
-        // for receiver in receiver_email_list {
-        //     match sql_conn
-        //         .execute_imailer_procedure(receiver.email_id(), &email_subject, &html_content)
-        //         .await
-        //     {
-        //         Ok(_) => {
-        //             info!("Successfully sent index alert mail to {}", receiver.email_id());
-        //         }
-        //         Err(e) => {
-        //             error!("[ERROR][NotificationServiceImpl->send_email_index_alert] Failed to send mail to {} : {:?}", receiver.email_id(), e);
-        //         }
-        //     }
-        // }
+        for receiver in receiver_email_list {
+            match sql_conn
+                .execute_imailer_procedure(receiver.email_id(), &email_subject, &html_content)
+                .await
+            {
+                Ok(_) => {
+                    info!("Successfully sent index alert mail to {}", receiver.email_id());
+                }
+                Err(e) => {
+                    error!("[ERROR][NotificationServiceImpl->send_email_index_alert] Failed to send mail to {} : {:?}", receiver.email_id(), e);
+                }
+            }
+        }
 
         Ok(())
     }
 
     #[doc = ""]
-    async fn generate_index_alert_html(
+    fn generate_index_alert_html(
         &self,
         log_index_results: &[LogIndexResult],
         elastic_config: &ElasticServerConfig,
@@ -355,7 +215,7 @@ impl NotificationServiceImpl {
         let template_content: String = fs::read_to_string(&*HTML_TEMPLATE_PATH)?;
 
         /* 알람 행들 생성 */
-        let alert_rows: String = self.generate_alert_rows(log_index_results).await?;
+        let alert_rows: String = self.generate_alert_rows(log_index_results)?;
 
         /* 템플릿의 플레이스홀더 교체 */
         let html_content: String = template_content
@@ -372,126 +232,56 @@ impl NotificationServiceImpl {
     }
 
     #[doc = ""]
-    async fn generate_alert_rows(
+    fn generate_alert_rows(
         &self,
         log_index_results: &[LogIndexResult],
     ) -> anyhow::Result<String> {
         let mut rows: String = String::new();
 
-        println!("count: {:?}", log_index_results.len());
-
         for log_result in log_index_results {
-            
+
             if let Some(alert_formats) = log_result.alert_index_format() {
+
+                rows.push_str(&format!(
+                    r#"<tr>
+                        <td style="border: 1px solid #ddd; padding: 12px; text-align: left; vertical-align: top; background-color: #fff;">{}</td>
+                        <td style="border: 1px solid #ddd; padding: 12px; text-align: left; vertical-align: top; background-color: #fff;">{}</td>
+                        <td style="border: 1px solid #ddd; padding: 12px; text-align: left; vertical-align: top; background-color: #fff;">{}</td>
+                        <td style="border: 1px solid #ddd; padding: 12px; text-align: left; vertical-align: top; background-color: #fff;">{}</td>
                 
+                    </tr>"#, 
+                    log_result.index_name(),
+                    log_result.cur_cnt(),
+                    log_result.fluctuation_val(),
+                    self.generate_history_table_html(alert_formats)
+                ));
             }   
-
-            // rows.push_str(r#"<tr>"#);
-            // rows.push_str(&format!(r#"
-            //     <td>
-            //         {}
-            //     </td>
-            // "#, log_result.index_name()));
-            // rows.push_str(r#"</tr>"#);
-
-            // rows.push_str(r#"
-            //     <tr>
-            //         <td></td>
-            //     </tr>
-            // "#);
-
-            // if let Some(alert_formats) = log_result.alert_index_format() {
-            //     for alert_format in alert_formats {
-            //         let alerts_opt: &Option<Vec<AlertIndex>> = log_result.alert_index_format();
-            //         let alerts_slice: &[AlertIndex] = alerts_opt.as_deref().unwrap_or(&[]);
-
-            //         let history_table: String = self
-            //             .generate_history_table_html(alert_format.index_name(), alerts_slice)
-            //             .await?;
-
-            //         rows.push_str(&format!(
-            //             r#"<tr>
-            //                 <td class="index-name">{}</td>
-            //                 <td class="count-change">{}</td>
-            //                 <td class="timestamp">{}</td>
-            //                 <td>{}</td>
-            //             </tr>"#,
-            //             alert_format.index_name(),
-            //             alert_format.cnt(),
-            //             alert_format.timestamp(),
-            //             history_table
-            //         ));
-            //     }
-            // }
         }
 
         Ok(rows)
     }
 
     #[doc = ""]
-    async fn generate_history_table_html(
+    fn generate_history_table_html(
         &self,
-        index_name: &str,
-        alert_index: &[AlertIndex],
-    ) -> anyhow::Result<String> {
-        let mut history_html: String = String::from(
-            r#"
-        <table class="history-table">
-            <tr>
-                <th>Time</th>
-                <th>Count</th>
-                <th>Change</th>
-            </tr>
-        "#,
+        alert_indexes: &[AlertIndex],
+    ) -> String {
+        
+        let mut inner_div: String = String::from(r#""#);
+
+        for alert_index in alert_indexes {
+            inner_div.push_str(&format!(r#"<div>{} -> {}</div>"#, alert_index.timestamp(), alert_index.cnt()));
+        } 
+
+        let history_divs: String = String::from(
+            &format!(r#"
+                <div style="color: #555; font-size: 14px; line-height: 1.5;">
+                {}
+                </div>
+            "#, inner_div)
         );
-
-        // 예시 히스토리 데이터 (실제로는 DB에서 조회해야 함)
-        // let sample_history = [
-        //     ("2025-01-20 10:00:00", 100000, 0),
-        //     ("2025-01-20 10:05:00", 105000, 5000),
-        //     ("2025-01-20 10:10:00", 103000, -2000),
-        //     ("2025-01-20 10:15:00", 120000, 17000),
-        // ];
-
-        // for (i, (time, count, change)) in alert_index.iter().enumerate() {
-        //     let change_class = if *change > 0 {
-        //         "count-increase"
-        //     } else if *change < 0 {
-        //         "count-decrease"
-        //     } else {
-        //         ""
-        //     };
-
-        //     let change_text = if *change > 0 {
-        //         format!("+{}", change)
-        //     } else if *change < 0 {
-        //         format!("{}", change)
-        //     } else {
-        //         "0".to_string()
-        //     };
-
-        //     history_html.push_str(&format!(
-        //         "<tr><td>{}</td><td>{}</td><td class=\"{}\">{}</td></tr>",
-        //         time, count, change_class, change_text
-        //     ));
-        // }
-
-        for elem in alert_index {
-            history_html.push_str(&format!(
-                "<tr>
-                    <td>{}</td>
-                    <td>{}</td>
-                    <td>{}</td>
-                </tr>",
-                elem.timestamp(), 
-                elem.cnt(), 
-                elem.index_name()
-            ));
-        }
-
-        history_html.push_str("</table>");
-
-        Ok(history_html)
+        
+        history_divs
     }
 }
 

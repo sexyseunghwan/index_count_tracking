@@ -26,49 +26,26 @@ impl<N: NotificationService, TQ: QueryService, MQ: QueryService> MainController<
         let index_list: IndexListConfig = read_toml_from_file::<IndexListConfig>(&INDEX_LIST_PATH)?;
         let mon_index_name: &str = get_system_config_info().monitor_index_name();
 
-        /* 1. 인덱스 문서 개수 정보 저장 */
-        self.save_index_cnt_infos(&index_list, mon_index_name)
-            .await?;
+        let mut ticker: Interval = interval(Duration::from_secs(30));
 
-        /* 2. 인덱스 문서 개수 검증 */
-        let index_doc_verification: Vec<LogIndexResult> =
-            self.verify_index_cnt(mon_index_name, &index_list).await?;
+        loop {
 
-        /* 3. 검증 결과를 바탕으로 알람을 보내주는 로직 */
-        self.alert_index_status(&index_doc_verification).await?;
+            ticker.tick().await;
 
-        // if index_doc_verification.len() > 0 {
-        //     self.alert_index_status(&index_doc_verification).await?;
-        // }
+            /* 1. 인덱스 문서 개수 정보 저장 */
+            self.save_index_cnt_infos(&index_list, mon_index_name)
+                .await?;
 
-        // /* 인덱스 문서 개수 검증 */
-        // for index_config in index_list.index() {
-        //     let index_name: &str = index_config.index_name();
+            /* 2. 인덱스 문서 개수 검증 */
+            let index_doc_verification: Vec<LogIndexResult> =
+                self.verify_index_cnt(mon_index_name, &index_list).await?;
 
-        // }
+            /* 3. 검증 결과를 바탕으로 알람을 보내주는 로직 */
+            self.alert_index_status(&index_doc_verification).await?;
 
-        // let mut ticker: Interval = interval(Duration::from_secs(10));
-
-        // loop {
-
-        //     ticker.tick().await;
-
-        //     /* 1. 특정 인덱스 문서 개수를 카운트 -> 10초에 한번씩? */
-        //     for index_config in index_list.index() {
-
-        //         let test: usize =
-        //             self.target_query_service.get_index_doc_count(index_config.index_name()).await?;
-
-        //         println!("{} -> {}", index_config.index_name(), test);
-
-        //     }
-
-        //     /* 2. 집계를 하여 문제가 있는 경우에는 알람을 보냄 */
-        // }
-
-        Ok(())
+        }
     }
-
+    
     #[doc = "인덱스 문서 개수 정보 색인 해주는 함수"]
     async fn save_index_cnt_infos(
         &self,

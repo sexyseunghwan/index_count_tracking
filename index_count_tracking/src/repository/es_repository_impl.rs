@@ -2,7 +2,7 @@ use crate::common::*;
 
 use crate::utils_modules::io_utils::*;
 
-use crate::model::configs::{elastic_server_config::*, total_config::*};
+use crate::model::configs::elastic_server_config::*;
 
 use crate::traits::repository_traits::es_repository::*;
 

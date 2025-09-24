@@ -1,9 +1,9 @@
 /*
 Author      : Seunghwan Shin
-Create date : 2025-09-00
-Description :
+Create date : 2025-09-24
+Description : 색인되고 있는 인덱스 개수의 현황을 파악하고 변화율이 높으면 알람을 보내주는 프로그램
 
-History     : 2025-09-00 Seunghwan Shin       # [v.1.0.0] first create
+History     : 2025-09-24 Seunghwan Shin       # [v.1.0.0] first create
 */
 
 mod common;
@@ -32,8 +32,6 @@ use controller::main_controller::*;
 
 mod dto;
 
-use crate::controller::main_controller;
-
 #[tokio::main]
 async fn main() {
     /* 전역로거 설정 및 초기 설정 */
@@ -43,13 +41,15 @@ async fn main() {
     info!("Tracking program start!");
 
     /* Elasticsearch connection */
+    /* 모니터링 대상 Elasticsearch cluster conneciton */
     let target_es_conn: EsRepositoryImpl = EsRepositoryImpl::new(get_elastic_config_info())
         .unwrap_or_else(|e| {
             let err_msg: &str = "[main] An issue occurred while initializing target_es_conn.";
             error!("{} {:?}", err_msg, e);
             panic!("{} {:?}", err_msg, e)
         });
-
+    
+    /* 모니터링용 Elasticsearch cluster conneciton */
     let mon_es_conn: EsRepositoryImpl = EsRepositoryImpl::new(get_mon_elastic_config_info())
         .unwrap_or_else(|e| {
             let err_msg: &str = "[main] An issue occurred while initializing mon_es_conn.";
