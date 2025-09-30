@@ -337,9 +337,10 @@ impl QueryServiceImpl {
                     ]
                 }
             },
-            "sort": [{ "timestamp": { "order": "desc" } }]
+            "sort": [{ "timestamp": { "order": "desc" } }],
+            "size": 100
         });
-
+        
         let response_body: Value = self
             .es_conn
             .get_search_query(&search_query, mon_index_name)
@@ -456,8 +457,9 @@ impl QueryService for QueryServiceImpl {
             .await?;
 
         let fluctuation_val: f64 = Self::calculate_fluctuation(min_val, max_val);
-
-        let mut result: LogIndexResult = LogIndexResult::new(index_name.to_string(), false, None, fluctuation_val, 0);
+        let one_decimal: f64 = (fluctuation_val * 100.0).round() / 100.0; /* 소수점 첫째 자리까지만 표현 */
+        
+        let mut result: LogIndexResult = LogIndexResult::new(index_name.to_string(), false, None, one_decimal, 0);
         
         if fluctuation_val >= allowable {
             let alert_index_formats: Vec<AlertIndexFormat> = self
