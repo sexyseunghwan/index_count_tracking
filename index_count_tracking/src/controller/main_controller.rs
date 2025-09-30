@@ -5,22 +5,24 @@ use crate::utils_modules::{io_utils::*, time_utils::*};
 use crate::model::{
     configs::total_config::*,
     index::{alert_index::*, index_list_config::*},
+    report::{daily_report::*, report_config::*}
 };
 
 use crate::dto::log_index_result::*;
 
 use crate::env_configuration::env_config::*;
 
-use crate::traits::service_traits::{notification_service::*, query_service::*};
+use crate::traits::service_traits::{notification_service::*, query_service::*, daily_report_service::*};
 
 #[derive(Debug, new)]
-pub struct MainController<N: NotificationService, TQ: QueryService, MQ: QueryService> {
+pub struct MainController<N: NotificationService, TQ: QueryService, MQ: QueryService, DR: DailyReportService> {
     notification_service: N,
     target_query_service: TQ,
     mon_query_service: MQ,
+    daily_report_service: DR,
 }
 
-impl<N: NotificationService, TQ: QueryService, MQ: QueryService> MainController<N, TQ, MQ> {
+impl<N: NotificationService, TQ: QueryService, MQ: QueryService, DR: DailyReportService> MainController<N, TQ, MQ, DR> {
     #[doc = r#"
         메인 루프를 실행하는 핵심 함수로, 30초 간격으로 인덱스 모니터링 작업을 반복 수행한다.
 
@@ -38,25 +40,126 @@ impl<N: NotificationService, TQ: QueryService, MQ: QueryService> MainController<
         let index_list: IndexListConfig = read_toml_from_file::<IndexListConfig>(&INDEX_LIST_PATH)?;
         let mon_index_name: &str = get_system_config_info().monitor_index_name();
 
+        
+        /* 1. 모니터링 테스크 */
+        let monitoring_task = self.monitoring_loop(&index_list, mon_index_name);
+        /* 2. 리포트 테스크 */
+        let daily_report_task = self.daily_report_loop(&index_list, mon_index_name);
+
+        /* 모니터링 태스크와 일일 리포트 태스크를 병렬로 실행 */ 
+        tokio::try_join!(monitoring_task, daily_report_task)?; 
+
+        Ok(())
+    }
+
+    #[doc = ""]
+    async fn monitoring_loop(&self, index_list: &IndexListConfig, mon_index_name: &str) -> anyhow::Result<()> {
         let mut ticker: Interval = interval(Duration::from_secs(30));
 
         loop {
-
             ticker.tick().await;
 
             /* 1. 인덱스 문서 개수 정보 저장 */
-            self.save_index_cnt_infos(&index_list, mon_index_name)
-                .await?;
+            if let Err(e) = self.save_index_cnt_infos(index_list, mon_index_name).await {
+                error!("[MainController->monitoring_loop] Failed to save index count infos: {:?}", e);
+                continue;
+            }
 
             /* 2. 인덱스 문서 개수 검증 */
-            let index_doc_verification: Vec<LogIndexResult> =
-                self.verify_index_cnt(mon_index_name, &index_list).await?;
+            let index_doc_verification: Vec<LogIndexResult> = match self
+                .verify_index_cnt(mon_index_name, index_list)
+                .await
+            {
+                Ok(results) => results,
+                Err(e) => {
+                    error!("[MainController->monitoring_loop] Failed to verify index count: {:?}", e);
+                    continue;
+                }
+            };
 
             if index_doc_verification.len() > 0 {
                 /* 3. 검증 결과를 바탕으로 알람을 보내주는 로직 */
-                self.alert_index_status(&index_doc_verification).await?;
-            } 
+                if let Err(e) = self.alert_index_status(&index_doc_verification).await {
+                    error!("[MainController->monitoring_loop] Failed to send alert: {:?}", e);
+                }
+            }
         }
+    }
+    
+    #[doc = ""]
+    async fn daily_report_loop(&self, index_list: &IndexListConfig, mon_index_name: &str) -> anyhow::Result<()> {
+        let report_config: &ReportConfig = get_daily_report_config_info();
+
+        if !report_config.enabled {
+            info!("[MainController->daily_report_loop] Daily report is disabled. Skipping daily report scheduler.");
+
+            /* 무한 대기 (데일리 보고용 기능 비활성화) */
+            loop {
+                tokio::time::sleep(std::time::Duration::from_secs(3600)).await;
+            }
+        }
+
+        info!("Starting daily report scheduler with cron schedule: {}", report_config.cron_schedule);
+
+        /* 크론 스케줄 파싱 */ 
+        let schedule: cron::Schedule = cron::Schedule::from_str(&report_config.cron_schedule)
+            .map_err(|e| anyhow!("[MainController->daily_report_loop] Failed to parse cron schedule '{}': {:?}", report_config.cron_schedule, e))?;
+
+        loop {
+            /* 보고용 스케쥴은 한국시간 기준으로 한다 GMT+9 */
+            let now: DateTime<Local> = chrono::Local::now();
+            
+            /* 다음 실행 시간 계산 */ 
+            let next_run: DateTime<Local> = schedule
+                .upcoming(now.timezone())
+                .next()
+                .ok_or_else(|| anyhow!("[MainController->daily_report_loop] Failed to calculate next run time from cron schedule"))?;
+
+            let duration_until_next_run: Duration = (next_run - now).to_std()
+                .map_err(|e| anyhow!("[MainController->daily_report_loop] Failed to calculate duration: {:?}", e))?;
+
+            info!(
+                "Next daily report scheduled at: {}. Sleeping for {:?}",
+                next_run.format("%Y-%m-%d %H:%M:%S"),
+                duration_until_next_run
+            );
+
+            tokio::time::sleep(duration_until_next_run).await;
+
+            /* 일일 리포트 생성 및 발송 */
+            info!("Starting daily report generation");
+
+            // match self.generate_and_send_daily_report(index_list, mon_index_name).await {
+            //     Ok(_) => {
+            //         info!("Daily report sent successfully");
+            //     }
+            //     Err(e) => {
+            //         error!("[MainController->daily_report_loop] Failed to generate/send daily report: {:?}", e);
+            //     }
+            // }
+        }
+    }
+
+    #[doc = ""]
+    async fn generate_and_send_daily_report(
+        &self,
+        index_list: &IndexListConfig,
+        mon_index_name: &str,
+    ) -> anyhow::Result<()> {
+
+        println!("HOHOHOHOHOHO");
+        // /* 일일 리포트 생성 */ 
+        // let report: DailyReport = self
+        //     .daily_report_service
+        //     .generate_daily_report(index_list, mon_index_name)
+        //     .await?;
+
+        // info!("Generated daily report with {} indices", report.index_stats.len());
+
+        // /* 이메일 발송 */ 
+        // self.daily_report_service.send_daily_report_email(&report).await?;
+
+        Ok(())
     }
     
     #[doc = "인덱스 문서 개수 정보 색인 해주는 함수"]

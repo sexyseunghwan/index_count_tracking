@@ -13,7 +13,7 @@ use crate::dto::log_index_result::*;
 
 #[derive(Debug, new)]
 pub struct QueryServiceImpl {
-    es_conn: EsRepositoryImpl,
+    es_conn: Arc<EsRepositoryImpl>,
 }
 
 impl QueryServiceImpl {
@@ -485,5 +485,13 @@ impl QueryService for QueryServiceImpl {
         }
 
         Ok(result)
+    }
+
+    async fn execute_search_query(
+        &self,
+        index_name: &str,
+        query: &serde_json::Value,
+    ) -> anyhow::Result<serde_json::Value> {
+        self.es_conn.get_search_query(query, index_name).await
     }
 }

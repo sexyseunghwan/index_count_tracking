@@ -20,4 +20,9 @@ pub trait QueryService {
         cur_timestamp_utc: &str,
     ) -> anyhow::Result<LogIndexResult>;
 
+    async fn execute_search_query(
+        &self,
+        index_name: &str,
+        query: &serde_json::Value,
+    ) -> anyhow::Result<serde_json::Value>;
 }
