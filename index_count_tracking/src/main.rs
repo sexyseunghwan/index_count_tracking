@@ -26,12 +26,17 @@ mod utils_modules;
 use utils_modules::logger_utils::*;
 
 mod service;
-use service::{notification_service_impl::*, query_service_impl::*, daily_report_service_impl::*};
+use service::{
+    chart_service_impl::*, daily_report_service_impl::*, notification_service_impl::*,
+    query_service_impl::*,
+};
 
 mod controller;
 use controller::main_controller::*;
 
 mod dto;
+
+mod enums;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -43,38 +48,44 @@ async fn main() -> anyhow::Result<()> {
 
     /* Elasticsearch connection */
     /* 모니터링 대상 Elasticsearch cluster conneciton */
-    let target_es_conn: Arc<EsRepositoryImpl> = Arc::new(EsRepositoryImpl::new(get_elastic_config_info())
-        .map_err(|e| {
+    let target_es_conn: Arc<EsRepositoryImpl> = Arc::new(
+        EsRepositoryImpl::new(get_elastic_config_info()).map_err(|e| {
             let err_msg = "[main] An issue occurred while initializing target_es_conn.";
             error!("{} {:?}", err_msg, e);
             anyhow!("{} {:?}", err_msg, e)
-        })?);
+        })?,
+    );
 
     /* 모니터링용 Elasticsearch cluster conneciton */
-    let mon_es_conn: Arc<EsRepositoryImpl> = Arc::new(EsRepositoryImpl::new(get_mon_elastic_config_info())
-        .map_err(|e| {
+    let mon_es_conn: Arc<EsRepositoryImpl> = Arc::new(
+        EsRepositoryImpl::new(get_mon_elastic_config_info()).map_err(|e| {
             let err_msg: &'static str = "[main] An issue occurred while initializing mon_es_conn.";
             error!("{} {:?}", err_msg, e);
             anyhow!("{} {:?}", err_msg, e)
-        })?);
-        
+        })?,
+    );
+
     /* 의존 주입 */
     let target_query_service: QueryServiceImpl = QueryServiceImpl::new(Arc::clone(&target_es_conn));
     let mon_query_service: QueryServiceImpl = QueryServiceImpl::new(Arc::clone(&mon_es_conn));
-    let notification_service: NotificationServiceImpl = NotificationServiceImpl::new()?;
+    let notification_service: Arc<NotificationServiceImpl> =
+        Arc::new(NotificationServiceImpl::new()?);
     let daily_report_service: DailyReportServiceImpl<QueryServiceImpl> =
         DailyReportServiceImpl::new(QueryServiceImpl::new(Arc::clone(&mon_es_conn)));
+    let flotter_chart_service: ChartServiceImpl = ChartServiceImpl::new();
 
     let main_controller: MainController<
         NotificationServiceImpl,
         QueryServiceImpl,
         QueryServiceImpl,
         DailyReportServiceImpl<QueryServiceImpl>,
+        ChartServiceImpl,
     > = MainController::new(
         notification_service,
         target_query_service,
         mon_query_service,
         daily_report_service,
+        flotter_chart_service,
     );
 
     if let Err(e) = main_controller.main_task().await {

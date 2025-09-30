@@ -2,7 +2,8 @@ use crate::common::*;
 
 use crate::model::{
     configs::{
-        elastic_server_config::*, receiver_email_config::*, system_config::*, total_config::*, smtp_config::*
+        elastic_server_config::*, receiver_email_config::*, smtp_config::*, system_config::*,
+        total_config::*,
     },
     index::alert_index::*,
 };
@@ -94,7 +95,6 @@ impl NotificationServiceImpl {
         subject: &str,
         html_content: &str,
     ) -> Result<String, anyhow::Error> {
-
         let email: Message = Message::builder()
             .from(smtp_config.credential_id.parse()?)
             .to(email_id.parse()?)
@@ -109,11 +109,9 @@ impl NotificationServiceImpl {
         );
 
         let mailer: AsyncSmtpTransport<lettre::Tokio1Executor> =
-            AsyncSmtpTransport::<lettre::Tokio1Executor>::relay(
-                smtp_config.smtp_name().as_str(),
-            )?
-            .credentials(creds)
-            .build();
+            AsyncSmtpTransport::<lettre::Tokio1Executor>::relay(smtp_config.smtp_name().as_str())?
+                .credentials(creds)
+                .build();
 
         match mailer.send(email).await {
             Ok(_) => Ok(email_id.to_string()),
@@ -121,7 +119,77 @@ impl NotificationServiceImpl {
         }
     }
 
+    #[doc = r#"
+        개별 수신자에게 HTML 형식의 이메일과 차트 이미지 첨부파일을 발송하는 비동기 함수.
 
+        1. 이메일 메시지 객체를 생성하고 발신자/수신자/제목/본문을 설정
+        2. 첨부된 차트 이미지 파일들을 읽어서 이메일에 첨부
+        3. SMTP 서버 인증 정보를 바탕으로 Credentials 객체 생성
+        4. `AsyncSmtpTransport`를 통해 SMTP 서버와 연결 설정
+        5. 구성된 메일러를 통해 실제 이메일 발송 시도
+        6. 발송 성공 시 수신자 이메일 주소 반환, 실패 시 에러 반환
+
+        # Arguments
+        * `smtp_config` - SMTP 서버 설정 정보 (서버명, 인증정보 포함)
+        * `email_id` - 수신자 이메일 주소
+        * `subject` - 이메일 제목
+        * `html_content` - HTML 형식의 이메일 본문
+        * `attachments` - 첨부할 파일 경로 목록
+
+        # Returns
+        * `Ok(String)` - 발송 성공 시 수신자 이메일 주소
+        * `Err(anyhow::Error)` - 이메일 구성 또는 발송 실패 시
+    "#]
+    #[allow(dead_code)]
+    async fn send_message_to_receiver_with_attachments(
+        &self,
+        smtp_config: &SmtpConfig,
+        email_id: &str,
+        subject: &str,
+        html_content: &str,
+        attachments: &[std::path::PathBuf],
+    ) -> Result<String, anyhow::Error> {
+        use lettre::message::{Attachment, header};
+
+        let mut multipart = MultiPart::mixed().multipart(
+            MultiPart::alternative().singlepart(SinglePart::html(html_content.to_string())),
+        );
+
+        // Add attachments
+        for attachment_path in attachments {
+            let file_content = tokio::fs::read(attachment_path).await?;
+            let filename = attachment_path
+                .file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or("chart.png");
+
+            let attachment = Attachment::new(filename.to_string())
+                .body(file_content, header::ContentType::parse("image/png")?);
+
+            multipart = multipart.singlepart(attachment);
+        }
+
+        let email: Message = Message::builder()
+            .from(smtp_config.credential_id.parse()?)
+            .to(email_id.parse()?)
+            .subject(subject)
+            .multipart(multipart)?;
+
+        let creds: Credentials = Credentials::new(
+            smtp_config.credential_id().to_string(),
+            smtp_config.credential_pw().to_string(),
+        );
+
+        let mailer: AsyncSmtpTransport<lettre::Tokio1Executor> =
+            AsyncSmtpTransport::<lettre::Tokio1Executor>::relay(smtp_config.smtp_name().as_str())?
+                .credentials(creds)
+                .build();
+
+        match mailer.send(email).await {
+            Ok(_) => Ok(email_id.to_string()),
+            Err(e) => Err(anyhow!("{:?} : Failed to send email to {} ", e, email_id)),
+        }
+    }
 
     #[doc = r#"
         SMTP 서버를 통해 수신자 목록에게 이메일을 일괄 발송하는 함수.
@@ -141,18 +209,26 @@ impl NotificationServiceImpl {
         * `anyhow::Result<()>` - 전체 프로세스 성공/실패 여부
     "#]
     #[allow(dead_code)]
-    async fn send_message_to_receivers_smtp(&self, email_subject: &str, html_content: &str) -> anyhow::Result<()> {
-        
+    async fn send_message_to_receivers_smtp(
+        &self,
+        email_subject: &str,
+        html_content: &str,
+    ) -> anyhow::Result<()> {
         /* receiver email list */
         let receiver_email_list: &Vec<ReceiverEmail> = &self.receiver_email_list().emails;
 
         let smtp_config: &SmtpConfig = get_smtp_config_info();
-        
+
         if smtp_config.async_process_yn {
             /* ASYNC TASK */
             let tasks = receiver_email_list.iter().map(|receiver| {
                 let email_id: &String = receiver.email_id();
-                self.send_message_to_receiver_html(smtp_config, email_id.as_str(), email_subject, html_content)
+                self.send_message_to_receiver_html(
+                    smtp_config,
+                    email_id.as_str(),
+                    email_subject,
+                    html_content,
+                )
             });
 
             let results: Vec<Result<String, anyhow::Error>> = join_all(tasks).await;
@@ -183,7 +259,78 @@ impl NotificationServiceImpl {
         Ok(())
     }
 
-    
+    #[doc = r#"
+        SMTP 서버를 통해 수신자 목록에게 첨부파일이 포함된 이메일을 일괄 발송하는 함수.
+
+        1. 설정된 SMTP 정보와 수신자 목록을 가져온다
+        2. `async_process_yn` 설정에 따라 처리 방식 결정:
+           - true: 비동기 병렬 처리로 모든 이메일을 동시 발송 (성능 우선)
+           - false: 순차적 동기 처리로 하나씩 발송 (안정성 우선)
+        3. 각 수신자별로 `send_message_to_receiver_with_attachments` 호출하여 개별 이메일 발송
+        4. 발송 결과를 로깅하되, 개별 실패가 전체 프로세스를 중단하지 않음
+
+        # Arguments
+        * `email_subject` - 이메일 제목
+        * `html_content` - HTML 형식의 이메일 본문
+        * `attachments` - 첨부할 파일 경로 목록
+
+        # Returns
+        * `anyhow::Result<()>` - 전체 프로세스 성공/실패 여부
+    "#]
+    #[allow(dead_code)]
+    async fn send_message_to_receivers_smtp_with_attachments(
+        &self,
+        email_subject: &str,
+        html_content: &str,
+        attachments: &[std::path::PathBuf],
+    ) -> anyhow::Result<()> {
+        /* receiver email list */
+        let receiver_email_list: &Vec<ReceiverEmail> = &self.receiver_email_list().emails;
+
+        let smtp_config: &SmtpConfig = get_smtp_config_info();
+
+        if smtp_config.async_process_yn {
+            /* ASYNC TASK */
+            let tasks = receiver_email_list.iter().map(|receiver| {
+                let email_id: &String = receiver.email_id();
+                self.send_message_to_receiver_with_attachments(
+                    smtp_config,
+                    email_id.as_str(),
+                    email_subject,
+                    html_content,
+                    attachments,
+                )
+            });
+
+            let results: Vec<Result<String, anyhow::Error>> = join_all(tasks).await;
+
+            for result in results {
+                match result {
+                    Ok(succ_email_id) => info!("Email sent successfully: {}", succ_email_id),
+                    Err(e) => error!(
+                        "[Error][send_message_to_receivers_with_attachments()] Failed to send email: {:?}",
+                        e
+                    ),
+                }
+            }
+        } else {
+            /* Not Async */
+            for receiver in receiver_email_list {
+                let email_id: &String = receiver.email_id();
+                self.send_message_to_receiver_with_attachments(
+                    smtp_config,
+                    email_id.as_str(),
+                    email_subject,
+                    html_content,
+                    attachments,
+                )
+                .await?;
+            }
+        }
+
+        Ok(())
+    }
+
     #[doc = r#"
         인덱스 알람 정보를 텔레그램 메시지로 발송하는 비동기 함수.
 
@@ -222,10 +369,7 @@ impl NotificationServiceImpl {
             let mut msg_format: String = String::from("🚨 [Index Count Alert] 🚨\n\n");
 
             for log_result in chunk {
-                msg_format.push_str(&format!(
-                    "📌 {} 📌\n",
-                    log_result.index_name()
-                ));
+                msg_format.push_str(&format!("📌 {} 📌\n", log_result.index_name()));
 
                 if let Some(alert_formats) = log_result.alert_index_format() {
                     for alert_format in alert_formats {
@@ -273,13 +417,14 @@ impl NotificationServiceImpl {
         let email_subject: String =
             String::from("[Elasticsearch] Index Document Count Change Detected");
 
-        let html_content: String = self
-            .generate_index_alert_html(log_index_results, elastic_config)?;
+        let html_content: String =
+            self.generate_index_alert_html(log_index_results, elastic_config)?;
 
         /* SMTP 버전 -> 온라인망 사용용*/
-        self.send_message_to_receivers_smtp(&email_subject, &html_content).await?;
-        
-        /* SP 버전 */ 
+        self.send_message_to_receivers_smtp(&email_subject, &html_content)
+            .await?;
+
+        /* SP 버전 */
         // let sql_conn: Arc<SqlServerRepositoryImpl> = get_sqlserver_repo();
 
         // for receiver in receiver_email_list {
@@ -362,16 +507,11 @@ impl NotificationServiceImpl {
         * `String` - HTML 테이블 행들이 연결된 문자열
         * `anyhow::Error` - 처리 실패 시
     "#]
-    fn generate_alert_rows(
-        &self,
-        log_index_results: &[LogIndexResult],
-    ) -> anyhow::Result<String> {
+    fn generate_alert_rows(&self, log_index_results: &[LogIndexResult]) -> anyhow::Result<String> {
         let mut rows: String = String::new();
 
         for log_result in log_index_results {
-
             if let Some(alert_formats) = log_result.alert_index_format() {
-
                 rows.push_str(&format!(
                     r#"<tr>
                         <td style="border: 1px solid #ddd; padding: 12px; text-align: left; vertical-align: top; background-color: #fff;">{}</td>
@@ -385,7 +525,7 @@ impl NotificationServiceImpl {
                     log_result.fluctuation_val(),
                     self.generate_history_table_html(alert_formats)
                 ));
-            }   
+            }
         }
 
         Ok(rows)
@@ -410,25 +550,26 @@ impl NotificationServiceImpl {
         # Returns
         * `String` - 히스토리 정보가 포함된 HTML div 컨테이너
     "#]
-    fn generate_history_table_html(
-        &self,
-        alert_indexes: &[AlertIndex],
-    ) -> String {
-        
+    fn generate_history_table_html(&self, alert_indexes: &[AlertIndex]) -> String {
         let mut inner_div: String = String::from(r#""#);
 
         for alert_index in alert_indexes {
-            inner_div.push_str(&format!(r#"<div>{} -> {}</div>"#, alert_index.timestamp(), alert_index.cnt()));
-        } 
+            inner_div.push_str(&format!(
+                r#"<div>{} -> {}</div>"#,
+                alert_index.timestamp(),
+                alert_index.cnt()
+            ));
+        }
 
-        let history_divs: String = String::from(
-            &format!(r#"
+        let history_divs: String = String::from(&format!(
+            r#"
                 <div style="color: #555; font-size: 14px; line-height: 1.5;">
                 {}
                 </div>
-            "#, inner_div)
-        );
-        
+            "#,
+            inner_div
+        ));
+
         history_divs
     }
 }

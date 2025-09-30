@@ -1,7 +1,7 @@
 use crate::common::*;
 
 #[async_trait]
-pub trait EsRepository {
+pub trait EsRepository: Send + Sync {
     async fn get_search_query(
         &self,
         es_query: &Value,

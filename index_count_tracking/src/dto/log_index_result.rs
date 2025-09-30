@@ -9,5 +9,5 @@ pub struct LogIndexResult {
     pub alert_yn: bool,
     pub alert_index_format: Option<Vec<AlertIndex>>,
     pub fluctuation_val: f64,
-    pub cur_cnt: usize
+    pub cur_cnt: usize,
 }

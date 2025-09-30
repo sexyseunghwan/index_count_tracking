@@ -2,7 +2,6 @@ use crate::common::*;
 
 use crate::model::index::{alert_index::*, index_config::*};
 
-
 use crate::dto::log_index_result::*;
 
 #[async_trait]
@@ -17,12 +16,19 @@ pub trait QueryService {
         &self,
         mon_index_name: &str,
         index_config: &IndexConfig,
-        cur_timestamp_utc: &str,
+        cur_timestamp_utc: DateTime<Utc>,
     ) -> anyhow::Result<LogIndexResult>;
-
-    async fn execute_search_query(
+    async fn get_report_infos_from_log_index(
         &self,
+        mon_index_name: &str,
         index_name: &str,
-        query: &serde_json::Value,
-    ) -> anyhow::Result<serde_json::Value>;
+        start_timestamp: DateTime<Utc>,
+        end_timestamp: DateTime<Utc>,
+    ) -> anyhow::Result<Vec<AlertIndex>>;
+    //anyhow::Result<Vec<AlertIndex>>;
+    // async fn execute_search_query(
+    //     &self,
+    //     index_name: &str,
+    //     query: &serde_json::Value,
+    // ) -> anyhow::Result<serde_json::Value>;
 }

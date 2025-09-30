@@ -10,6 +10,7 @@ use crate::model::index::{alert_index::*, alert_index_format::*, index_config::*
 
 use crate::dto::log_index_result::*;
 
+use crate::enums::sort_order::*;
 
 #[derive(Debug, new)]
 pub struct QueryServiceImpl {
@@ -173,8 +174,8 @@ impl QueryServiceImpl {
         &self,
         mon_index_name: &str,
         index_name: &str,
-        gte: &str,
-        lte: &str,
+        gte: DateTime<Utc>,
+        lte: DateTime<Utc>,
         agg_name: &str,
         agg_body: Value,
     ) -> anyhow::Result<Option<f64>> {
@@ -185,7 +186,7 @@ impl QueryServiceImpl {
                     "filter": [
                         {
                             "range": {
-                                "timestamp": { "gte": gte, "lte": lte }
+                                "timestamp": { "gte": convert_date_to_str(gte), "lte": convert_date_to_str(lte) }
                             }
                         },
                         {
@@ -236,8 +237,8 @@ impl QueryServiceImpl {
         &self,
         mon_index_name: &str,
         index_name: &str,
-        gte: &str,
-        lte: &str,
+        gte: DateTime<Utc>,
+        lte: DateTime<Utc>,
     ) -> anyhow::Result<(f64, f64)> {
         let max_val: f64 = self
             .fetch_agg_value_f64(
@@ -287,46 +288,51 @@ impl QueryServiceImpl {
 
         let avg: f64 = (val1.abs() + val2.abs()) / 2.0;
 
-        if avg > 0.0 {
-            (diff / avg) * 100.0
-        } else {
-            0.0
-        }
+        if avg > 0.0 { (diff / avg) * 100.0 } else { 0.0 }
     }
 
+    // #[doc = r#"
+    //     지정된 시간 범위 내에서 특정 인덱스의 알람 데이터를 조회하여 AlertIndexFormat 벡터로 반환한다.
 
-    #[doc = r#"
-        지정된 시간 범위 내에서 특정 인덱스의 알람 데이터를 조회하여 AlertIndexFormat 벡터로 반환한다.
+    //     1. 시간 범위(`gte` ~ `lte`)와 인덱스명으로 필터링된 검색 쿼리 생성
+    //     2. `timestamp` 필드 기준으로 내림차순 정렬하여 최신 데이터부터 조회
+    //     3. 조회된 결과를 `AlertIndex`에서 `AlertIndexFormat`으로 변환
+    //     4. `get_query_result_vec` 헬퍼를 통해 ES 응답을 구조화된 객체로 파싱
 
-        1. 시간 범위(`gte` ~ `lte`)와 인덱스명으로 필터링된 검색 쿼리 생성
-        2. `timestamp` 필드 기준으로 내림차순 정렬하여 최신 데이터부터 조회
-        3. 조회된 결과를 `AlertIndex`에서 `AlertIndexFormat`으로 변환
-        4. `get_query_result_vec` 헬퍼를 통해 ES 응답을 구조화된 객체로 파싱
+    //     # Arguments
+    //     * `mon_index_name` - 모니터링 데이터가 저장된 인덱스명
+    //     * `index_name` - 대상 인덱스명
+    //     * `prev_timestamp_utc` - 조회 시작 시간 (UTC)
+    //     * `cur_timestamp_utc` - 조회 종료 시간 (UTC)
 
-        # Arguments
-        * `mon_index_name` - 모니터링 데이터가 저장된 인덱스명
-        * `index_name` - 대상 인덱스명
-        * `prev_timestamp_utc` - 조회 시작 시간 (UTC)
-        * `cur_timestamp_utc` - 조회 종료 시간 (UTC)
+    //     # Returns
+    //     * `Vec<AlertIndexFormat>` - 시간순으로 정렬된 알람 데이터 목록
+    //     * `anyhow::Error` - ES 조회 실패 또는 파싱 실패 시
+    // "#]
 
-        # Returns
-        * `Vec<AlertIndexFormat>` - 시간순으로 정렬된 알람 데이터 목록
-        * `anyhow::Error` - ES 조회 실패 또는 파싱 실패 시
-    "#]
-    async fn fetch_alert_data(
+    #[doc = ""]
+    async fn fetch_index_cnt_infos<'a>(
         &self,
         mon_index_name: &str,
         index_name: &str,
-        prev_timestamp_utc: &str,
-        cur_timestamp_utc: &str,
+        prev_timestamp_utc: DateTime<Utc>,
+        cur_timestamp_utc: DateTime<Utc>,
+        size: usize,
+        sorts: Option<Vec<SortSpec<'a>>>,
     ) -> anyhow::Result<Vec<AlertIndexFormat>> {
+        let sort_json: Vec<Value> = sorts
+            .unwrap_or_default()
+            .iter()
+            .map(|spec| spec.to_es_json())
+            .collect();
+
         let search_query: Value = json!({
             "query": {
                 "bool": {
                     "filter": [
                         {
                             "range": {
-                                "timestamp": { "gte": prev_timestamp_utc, "lte": cur_timestamp_utc }
+                                "timestamp": { "gte": convert_date_to_str(prev_timestamp_utc), "lte": convert_date_to_str(cur_timestamp_utc) }
                             }
                         },
                         {
@@ -337,10 +343,10 @@ impl QueryServiceImpl {
                     ]
                 }
             },
-            "sort": [{ "timestamp": { "order": "desc" } }],
-            "size": 100
+            "sort": sort_json,
+            "size": size
         });
-        
+
         let response_body: Value = self
             .es_conn
             .get_search_query(&search_query, mon_index_name)
@@ -444,26 +450,44 @@ impl QueryService for QueryServiceImpl {
         &self,
         mon_index_name: &str,
         index_config: &IndexConfig,
-        cur_timestamp_utc: &str,
+        cur_timestamp_utc: DateTime<Utc>,
     ) -> anyhow::Result<LogIndexResult> {
         let index_name: &str = index_config.index_name();
         let allowable: f64 = *index_config.allowable_fluctuation_range();
         let agg_term: i64 = *index_config.agg_term_sec();
 
-        let prev_timestamp_utc: String = calc_time_window(cur_timestamp_utc, agg_term)?;
+        let prev_timestamp_utc: DateTime<Utc> = calc_time_window(cur_timestamp_utc, agg_term);
 
         let (min_val, max_val) = self
-            .fetch_min_max_values(mon_index_name, index_name, &prev_timestamp_utc, cur_timestamp_utc)
+            .fetch_min_max_values(
+                mon_index_name,
+                index_name,
+                prev_timestamp_utc,
+                cur_timestamp_utc,
+            )
             .await?;
 
         let fluctuation_val: f64 = Self::calculate_fluctuation(min_val, max_val);
         let one_decimal: f64 = (fluctuation_val * 100.0).round() / 100.0; /* 소수점 첫째 자리까지만 표현 */
-        
-        let mut result: LogIndexResult = LogIndexResult::new(index_name.to_string(), false, None, one_decimal, 0);
-        
+
+        let mut result: LogIndexResult =
+            LogIndexResult::new(index_name.to_string(), false, None, one_decimal, 0);
+
         if fluctuation_val >= allowable {
+            let sorts: Vec<SortSpec<'_>> = vec![SortSpec {
+                field: "timestamp",
+                order: SortOrder::Desc,
+            }];
+
             let alert_index_formats: Vec<AlertIndexFormat> = self
-                .fetch_alert_data(mon_index_name, index_name, &prev_timestamp_utc, cur_timestamp_utc)
+                .fetch_index_cnt_infos(
+                    mon_index_name,
+                    index_name,
+                    prev_timestamp_utc,
+                    cur_timestamp_utc,
+                    100,
+                    Some(sorts),
+                )
                 .await?;
 
             let cur_index_cnt: usize = alert_index_formats
@@ -487,11 +511,39 @@ impl QueryService for QueryServiceImpl {
         Ok(result)
     }
 
-    async fn execute_search_query(
+    #[doc = ""]
+    async fn get_report_infos_from_log_index(
         &self,
+        mon_index_name: &str,
         index_name: &str,
-        query: &serde_json::Value,
-    ) -> anyhow::Result<serde_json::Value> {
-        self.es_conn.get_search_query(query, index_name).await
+        start_timestamp: DateTime<Utc>,
+        end_timestamp: DateTime<Utc>,
+    ) -> anyhow::Result<Vec<AlertIndex>> {
+        let sorts: Vec<SortSpec<'_>> = vec![
+            SortSpec {
+                field: "timestamp",
+                order: SortOrder::Asc,
+            },
+            /* 필요 시 보조 정렬도 추가 가능 */
+            // SortSpec { field: "_score", order: SortOrder::Desc },
+        ];
+
+        let alert_index_formats: Vec<AlertIndexFormat> = self
+            .fetch_index_cnt_infos(
+                mon_index_name,
+                index_name,
+                start_timestamp,
+                end_timestamp,
+                10000,
+                Some(sorts),
+            )
+            .await?;
+
+        let report_indexes: Vec<AlertIndex> = alert_index_formats
+            .into_iter()
+            .map(|x| x.alert_index)
+            .collect();
+
+        Ok(report_indexes)
     }
 }

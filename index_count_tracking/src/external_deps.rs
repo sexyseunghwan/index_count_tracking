@@ -1,4 +1,4 @@
-pub use chrono::{DateTime, NaiveDateTime, Utc, Local, Timelike};
+pub use chrono::{DateTime, Local, NaiveDateTime, Timelike, Utc};
 pub use deadpool_tiberius::{Manager, Pool};
 pub use elasticsearch::{
     DeleteParts, Elasticsearch, IndexParts, SearchParts,
@@ -16,7 +16,7 @@ pub use reqwest::Client;
 pub use urlencoding::encode;
 
 pub use lettre::{
-    Message, AsyncSmtpTransport,
+    AsyncSmtpTransport, Message,
     message::{MultiPart, SinglePart},
-    transport::smtp::authentication::Credentials
+    transport::smtp::authentication::Credentials,
 };

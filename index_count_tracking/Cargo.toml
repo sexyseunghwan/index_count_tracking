@@ -28,7 +28,8 @@ chrono-tz = "0.9.0"
 cron = "0.13.0"
 regex = "1.11.1"
 num-format = "0.4.4"
-deadpool-tiberius = "0.1.9"  
+deadpool-tiberius = "0.1.9"
 tiberius = { version = "0.12", features = ["sql-browser-tokio"] }
 tokio-util = "0.7"
 urlencoding = "2.1"
+plotters = { version = "0.3", features = ["bitmap_backend", "bitmap_encoder"] }

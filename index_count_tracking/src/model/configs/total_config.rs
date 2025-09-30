@@ -1,7 +1,7 @@
 use crate::common::*;
 
 use crate::model::configs::{
-    elastic_server_config::*, rdb_config::*, system_config::*, telegram_config::*, smtp_config::*    
+    elastic_server_config::*, rdb_config::*, smtp_config::*, system_config::*, telegram_config::*,
 };
 
 use crate::model::report::report_config::*;
@@ -28,7 +28,7 @@ pub struct TotalConfig {
     pub system: SystemConfig,
     #[allow(dead_code)]
     pub smtp: SmtpConfig,
-    pub daily_report: ReportConfig
+    pub daily_report: ReportConfig,
 }
 
 #[doc = "Elasticsearch config 정보"]
