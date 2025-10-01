@@ -53,9 +53,20 @@ pub fn convert_utc_from_local(now_local: DateTime<Local>) -> DateTime<Utc> {
     now_local.with_timezone(&Utc)
 }
 
-#[doc = ""]
-pub fn convert_date_to_str(utc_time: DateTime<Utc>) -> String {
-    utc_time.format("%Y-%m-%dT%H:%M:%SZ").to_string()
+//#[doc = ""]
+// pub fn convert_date_to_str(utc_time: DateTime<Utc>) -> String {
+//     utc_time.format("%Y-%m-%dT%H:%M:%SZ").to_string()
+// }
+
+pub fn convert_date_to_str<Tz>(time: DateTime<Tz>) -> String
+where
+    Tz: TimeZone,
+    Tz::Offset: Display, // <- format()을 쓰려면 필요
+{
+    // Z(UTC)로 통일해 문자열 생성
+    time.with_timezone(&Utc)
+        .format("%Y-%m-%dT%H:%M:%SZ")
+        .to_string()
 }
 
 #[doc = "특정 시각에서 특정 시각을 빼준 시각을 반환하는 함수"]

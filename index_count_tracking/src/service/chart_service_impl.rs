@@ -87,18 +87,18 @@ impl ChartService for ChartServiceImpl {
         let handle: tokio::task::JoinHandle<Result<(), anyhow::Error>> = tokio::task::spawn_blocking(move || {
             /* ---- 여기부터는 동기 코드 (plotters) ---- */ 
             let root = BitMapBackend::new(&output_path_str, (1400, 700)).into_drawing_area();
-            root.fill(&RGBColor(250, 250, 252))?;
+            root.fill(&RGBColor(20, 20, 20))?;
 
             let mut chart = ChartBuilder::on(&root)
-                .caption(&title, ("sans-serif", 40).into_font().color(&RGBColor(40, 40, 40)))
+                .caption(&title, ("sans-serif", 40).into_font().color(&RGBColor(240, 240, 240)))
                 .margin(30)
                 .x_label_area_size(70)
                 .y_label_area_size(90)
                 .build_cartesian_2d(0..x_labels.len() - 1, y_min..y_max)?;
 
-            let line_color: RGBColor = RGBColor(255, 99, 71);
-            let grid_color: RGBColor = RGBColor(226, 232, 240);
-            let text_color: RGBColor = RGBColor(71, 85, 105);
+            let line_color: RGBColor = RGBColor(0, 191, 255);
+            let grid_color: RGBColor = RGBColor(60, 60, 60);
+            let text_color: RGBColor = RGBColor(200, 200, 200);
 
             chart
                 .configure_mesh()
@@ -106,7 +106,7 @@ impl ChartService for ChartServiceImpl {
                 .y_desc(&y_label)
                 .x_labels(x_labels.len().min(10))
                 .y_labels(10)
-                .axis_style(ShapeStyle::from(&RGBColor(148, 163, 184)).stroke_width(2))
+                .axis_style(ShapeStyle::from(&RGBColor(120, 120, 120)).stroke_width(2))
                 .light_line_style(ShapeStyle::from(&grid_color).stroke_width(1))
                 .bold_line_style(ShapeStyle::from(&grid_color).stroke_width(2))
                 .label_style(("sans-serif", 16).into_font().color(&text_color))

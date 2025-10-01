@@ -227,10 +227,10 @@ impl<
             }
 
             let output_path: std::path::PathBuf = std::path::PathBuf::from(format!("./pics/line_chart_{}.png",index_name));
-            
+
             let result: Result<(), anyhow::Error> = self.chart_service
                 .generate_line_chart(
-                    "Monthly Document Count",
+                    &format!("[{} ~ {}] {}", convert_date_to_str(one_day_prev_time), convert_date_to_str(cur_utc_time), index_name),
                     x_label,
                     y_label,
                     &output_path,

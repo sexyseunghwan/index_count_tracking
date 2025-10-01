@@ -1,4 +1,4 @@
-pub use chrono::{DateTime, Local, NaiveDateTime, Timelike, Utc};
+pub use chrono::{DateTime, Local, NaiveDateTime, Timelike, Utc, TimeZone};
 pub use deadpool_tiberius::{Manager, Pool};
 pub use elasticsearch::{
     DeleteParts, Elasticsearch, IndexParts, SearchParts,
