@@ -149,63 +149,8 @@ impl ChartService for ChartServiceImpl {
             .context("[ChartServiceImpl->generate_line_chart] drawing/present failed")?;
 
         info!("Line chart generated successfully: {:?}", output_path);
+        
         Ok(())
-
-        /* Run blocking operation in a separate thread */ 
-        // tokio::task::spawn_blocking(move || -> anyhow::Result<()> {
-        //     let root: DrawingArea<BitMapBackend<'_>, plotters::coord::Shift> = 
-        //         BitMapBackend::new(&output_path_str, (1400, 700)).into_drawing_area();
-
-        //     /* Use a light background color instead of pure white */ 
-        //     root.fill(&RGBColor(250, 250, 252))?;
-
-        //     let (y_min, y_max) = Self::calculate_y_range(&y_data);
-
-        //     let mut chart = ChartBuilder::on(&root)
-        //         .caption(&title, ("sans-serif", 40).into_font().color(&RGBColor(40, 40, 40)))
-        //         .margin(30)
-        //         .x_label_area_size(70)
-        //         .y_label_area_size(90)
-        //         .build_cartesian_2d(0..x_labels.len() - 1, y_min..y_max)?;
-
-        //     /* Modern color for the line - bright orange/red for better visibility */ 
-        //     let line_color: RGBColor = RGBColor(255, 99, 71); // Tomato red
-        //     let grid_color: RGBColor = RGBColor(226, 232, 240);
-        //     let text_color: RGBColor = RGBColor(71, 85, 105);
-
-        //     chart
-        //         .configure_mesh()
-        //         .x_desc(&x_label)
-        //         .y_desc(&y_label)
-        //         .x_labels(x_labels.len().min(10))
-        //         .y_labels(10)
-        //         .axis_style(ShapeStyle::from(&RGBColor(148, 163, 184)).stroke_width(2))
-        //         .light_line_style(ShapeStyle::from(&grid_color).stroke_width(1))
-        //         .bold_line_style(ShapeStyle::from(&grid_color).stroke_width(2))
-        //         .label_style(("sans-serif", 16).into_font().color(&text_color))
-        //         .x_label_formatter(&|x| {
-        //             if *x < x_labels.len() {
-        //                 x_labels[*x].clone()
-        //             } else {
-        //                 String::new()
-        //             }
-        //         })
-        //         .y_label_formatter(&|y| Self::format_number(*y))
-        //         .draw()?;
-
-        //     /* Draw line with increased thickness - no markers */ 
-        //     chart.draw_series(LineSeries::new(
-        //         y_data.iter().enumerate().map(|(i, &y)| (i, y)),
-        //         ShapeStyle::from(&line_color).stroke_width(3),
-        //     ))?;
-
-        //     root.present()?;
-        //     Ok(())
-        // })
-        // .await??;
-
-        // info!("Line chart generated successfully: {:?}", output_path);
-        // Ok(())
     }
 
     // async fn generate_multi_line_chart(

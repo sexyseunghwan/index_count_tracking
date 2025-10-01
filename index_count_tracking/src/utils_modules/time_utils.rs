@@ -18,6 +18,13 @@ pub fn get_current_utc_naivedatetime_str() -> String {
     curr_time.format("%Y-%m-%dT%H:%M:%SZ").to_string()
 }
 
+#[doc = ""]
+pub fn calc_struct_to_strkor(utc_time: &str) -> anyhow::Result<String> {
+    let dt_utc: DateTime<Utc> = utc_time.parse::<DateTime<Utc>>()?;
+    let dt_local: DateTime<Local> = dt_utc.with_timezone(&Local);
+    Ok(dt_local.format("%Y-%m-%dT%H:%M:%SZ").to_string())
+}
+
 #[doc = "duration 이전 시각을 반환해주는 함수"]
 // pub fn calc_time_window(time: &str, duration_secs: i64) -> anyhow::Result<String> {
 //     /* 입력 문자열을 NaiveDateTime으로 파싱 */

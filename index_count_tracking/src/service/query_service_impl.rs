@@ -539,9 +539,16 @@ impl QueryService for QueryServiceImpl {
             )
             .await?;
 
+        /* 한국시간으로 변환해서 저장해준다. */
         let report_indexes: Vec<AlertIndex> = alert_index_formats
             .into_iter()
-            .map(|x| x.alert_index)
+            .map(|x| {
+                let mut alert_index: AlertIndex = x.alert_index;
+                let utc_to_local: String = calc_struct_to_strkor(alert_index.timestamp()).unwrap_or(alert_index.timestamp().to_string());
+                alert_index.set_timestamp(utc_to_local);
+
+                alert_index
+            })
             .collect();
 
         Ok(report_indexes)
