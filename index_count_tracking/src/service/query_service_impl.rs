@@ -186,7 +186,7 @@ impl QueryServiceImpl {
                     "filter": [
                         {
                             "range": {
-                                "timestamp": { "gte": convert_date_to_str(gte), "lte": convert_date_to_str(lte) }
+                                "timestamp": { "gte": convert_date_to_str(gte, Utc), "lte": convert_date_to_str(lte, Utc) }
                             }
                         },
                         {
@@ -332,7 +332,7 @@ impl QueryServiceImpl {
                     "filter": [
                         {
                             "range": {
-                                "timestamp": { "gte": convert_date_to_str(prev_timestamp_utc), "lte": convert_date_to_str(cur_timestamp_utc) }
+                                "timestamp": { "gte": convert_date_to_str(prev_timestamp_utc, Utc), "lte": convert_date_to_str(cur_timestamp_utc, Utc) }
                             }
                         },
                         {
@@ -544,7 +544,8 @@ impl QueryService for QueryServiceImpl {
             .into_iter()
             .map(|x| {
                 let mut alert_index: AlertIndex = x.alert_index;
-                let utc_to_local: String = calc_struct_to_strkor(alert_index.timestamp()).unwrap_or(alert_index.timestamp().to_string());
+                let utc_to_local: String = calc_struct_to_strkor(alert_index.timestamp())
+                    .unwrap_or(alert_index.timestamp().to_string());
                 alert_index.set_timestamp(utc_to_local);
 
                 alert_index

@@ -201,13 +201,15 @@ impl<
         mon_index_name: &str,
         cur_utc_time: DateTime<Utc>,
     ) -> anyhow::Result<()> {
-
         /* 현재 시간 부로 24시간전의 mon_index_name 개수의 모든 데이터를 가져와준다. */
         let one_day_prev_time: DateTime<Utc> = minus_h(cur_utc_time, 240);
-        
+
+        let mut chart_img_path_list: Vec<PathBuf> = Vec::new();
+
         for index in index_list.index() {
             let index_name: &str = index.index_name();
 
+            /* 여기서 넘어온 AlertIndex 시각정보는 모두 한국시각으로 전환된 결과임. */
             let index_cnt_infos: Vec<AlertIndex> = self
                 .mon_query_service
                 .get_report_infos_from_log_index(
@@ -217,30 +219,49 @@ impl<
                     cur_utc_time,
                 )
                 .await?;
-            
+
             let mut x_label: Vec<String> = Vec::new();
             let mut y_label: Vec<i64> = Vec::new();
-            
+
             for index_info in index_cnt_infos {
                 x_label.push(index_info.timestamp);
                 y_label.push(index_info.cnt as i64);
             }
 
-            let output_path: std::path::PathBuf = std::path::PathBuf::from(format!("./pics/line_chart_{}.png",index_name));
+            let output_path: PathBuf =
+                PathBuf::from(format!("./pics/line_chart_{}.png", index_name));
 
-            let result: Result<(), anyhow::Error> = self.chart_service
+            let cur_local_time: DateTime<Local> = convert_local_from_utc(cur_utc_time);
+            let one_day_prev_local_time: DateTime<Local> =
+                convert_local_from_utc(one_day_prev_time);
+
+            match self
+                .chart_service
                 .generate_line_chart(
-                    &format!("[{} ~ {}] {}", convert_date_to_str(one_day_prev_time), convert_date_to_str(cur_utc_time), index_name),
+                    &format!(
+                        "[{} ~ {}] {}",
+                        convert_date_to_str(one_day_prev_local_time, Local),
+                        convert_date_to_str(cur_local_time, Local),
+                        index_name
+                    ),
                     x_label,
                     y_label,
                     &output_path,
-                    "Month",
-                    "Count",
+                    "timestamp",
+                    "index count",
                 )
-                .await;
-
+                .await {
+                    Ok(_) => (),
+                    Err(e) => {
+                        error!("[MainController->generate_and_send_daily_report] {:?}", e);
+                        continue;
+                    }
+                }
+            
+            chart_img_path_list.push(output_path);
         }
 
+        
         //println!("HOHOHOHOHOHO");
         // /* 일일 리포트 생성 */
         // let report: DailyReport = self
@@ -262,7 +283,7 @@ impl<
         index_list: &IndexListConfig,
         mon_index_name: &str,
     ) -> anyhow::Result<()> {
-        let cur_timestamp_utc: String = get_current_utc_naivedatetime_str();
+        let cur_utc_time: DateTime<Utc> = Utc::now();
 
         for index_config in index_list.index() {
             let index_name: &str = index_config.index_name();
@@ -284,7 +305,7 @@ impl<
             let alert_index: AlertIndex = AlertIndex::new(
                 index_name.to_string(),
                 doc_cnt,
-                cur_timestamp_utc.to_string(),
+                convert_date_to_str(cur_utc_time, Utc),
             );
 
             /* 해당 정보를 모니터링 클러스터에 색인 */
