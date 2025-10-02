@@ -104,6 +104,24 @@ pub static SERVER_CONFIG_PATH: once_lazy<String> =
 pub static HTML_TEMPLATE_PATH: once_lazy<String> =
     once_lazy::new(|| get_env_or_panic("HTML_TEMPLATE_PATH"));
 
+#[doc = r#"
+    일일 리포트 이메일용 HTML 템플릿 파일의 경로를 환경변수에서 읽어와 전역 변수로 초기화.
+
+    `DAILY_REPORT_TEMPLATE_PATH` 환경변수를 통해 HTML 템플릿 파일 경로를 지정받는다.
+    이 템플릿 파일은 일일 리포트 이메일의 레이아웃과 스타일을 정의하며,
+    플레이스홀더를 통해 동적으로 리포트 데이터가 삽입된다.
+
+    # 예상 템플릿 플레이스홀더
+    - `{{REPORT_DATE}}`: 리포트 생성일
+    - `{{TOTAL_INDICES}}`: 총 인덱스 수
+    - `{{INDEX_ROWS}}`: 인덱스별 상세 정보 테이블 행들
+
+    # Panics
+    `DAILY_REPORT_TEMPLATE_PATH` 환경변수가 설정되지 않은 경우
+"#]
+pub static DAILY_REPORT_TEMPLATE_PATH: once_lazy<String> =
+    once_lazy::new(|| get_env_or_panic("DAILY_REPORT_TEMPLATE_PATH"));
+
 // #[doc = "Function to globally initialize the 'INDEX_ALERT_TEMPLATE_PATH' variable"]
 // pub static INDEX_ALERT_TEMPLATE_PATH: once_lazy<String> =
 //     once_lazy::new(|| String::from("html/index_alert_template.html"));

@@ -33,3 +33,4 @@ tiberius = { version = "0.12", features = ["sql-browser-tokio"] }
 tokio-util = "0.7"
 urlencoding = "2.1"
 plotters = { version = "0.3", features = ["bitmap_backend", "bitmap_encoder"] }
+base64 = "0.22"

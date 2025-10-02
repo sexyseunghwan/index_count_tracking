@@ -572,6 +572,89 @@ impl NotificationServiceImpl {
 
         history_divs
     }
+
+    #[doc = r#"
+        이미지 파일들을 Base64로 인코딩하여 HTML img 태그 문자열로 변환하는 함수.
+
+        # Arguments
+        * `chart_img_path_list` - 이미지 파일 경로 목록
+
+        # Returns
+        * `anyhow::Result<String>` - Base64 인코딩된 img 태그들
+    "#]
+    async fn convert_images_to_base64_html(
+        &self,
+        chart_img_path_list: &[PathBuf],
+    ) -> anyhow::Result<String> {
+        use base64::{Engine as _, engine::general_purpose};
+
+        let mut img_tags = String::new();
+
+        for img_path in chart_img_path_list {
+            let img_data = tokio::fs::read(img_path).await?;
+            let base64_data = general_purpose::STANDARD.encode(&img_data);
+
+            let filename = img_path
+                .file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or("chart.png");
+
+            img_tags.push_str(&format!(
+                r#"<div style="margin-bottom: 20px;">
+                    <h3 style="color: #555; margin-bottom: 10px;">{}</h3>
+                    <img src="data:image/png;base64,{}" style="max-width: 100%; height: auto; border: 1px solid #ddd; border-radius: 5px;" />
+                </div>"#,
+                filename,
+                base64_data
+            ));
+        }
+
+        Ok(img_tags)
+    }
+
+    #[doc = r#"
+        일일 리포트 이메일을 발송하는 함수.
+
+        1. 수신자 목록과 SMTP 설정을 가져온다
+        2. 이미지를 Base64로 인코딩하여 HTML에 직접 포함
+        3. `send_message_to_receivers_smtp`를 통해 HTML만 발송 (첨부파일 없음)
+        4. 각 수신자별로 개별적으로 이메일을 발송하며, 실패 시에도 다른 수신자에게는 계속 발송
+
+        # Arguments
+        * `email_subject` - 이메일 제목
+        * `html_content` - HTML 형식의 이메일 본문
+        * `chart_img_path_list` - HTML에 포함할 차트 이미지 파일 경로 목록
+
+        # Returns
+        * `anyhow::Result<()>` - 발송 프로세스 완료 여부
+    "#]
+    async fn send_daily_report_email_impl(
+        &self,
+        email_subject: &str,
+        html_content: &str,
+        chart_img_path_list: &[PathBuf],
+    ) -> anyhow::Result<()> {
+        info!(
+            "Sending daily report email with {} embedded chart images",
+            chart_img_path_list.len()
+        );
+
+        /* 이미지를 Base64로 변환 */
+        let base64_images = self
+            .convert_images_to_base64_html(chart_img_path_list)
+            .await?;
+
+        /* HTML에 이미지 삽입 */
+        let final_html = html_content.replace("{{CHART_IMAGES}}", &base64_images);
+
+        /* SMTP 버전 - 첨부파일 없이 HTML만 전송 */
+        self.send_message_to_receivers_smtp(email_subject, &final_html)
+            .await?;
+
+        info!("Daily report email sent successfully");
+
+        Ok(())
+    }
 }
 
 #[async_trait]
@@ -620,5 +703,15 @@ impl NotificationService for NotificationServiceImpl {
         };
 
         Ok(())
+    }
+
+    async fn send_daily_report_email(
+        &self,
+        email_subject: &str,
+        html_content: &str,
+        chart_img_path_list: &[PathBuf],
+    ) -> Result<(), anyhow::Error> {
+        self.send_daily_report_email_impl(email_subject, html_content, chart_img_path_list)
+            .await
     }
 }

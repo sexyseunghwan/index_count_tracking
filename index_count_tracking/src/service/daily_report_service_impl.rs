@@ -5,17 +5,114 @@ use crate::model::{index::index_list_config::*, report::daily_report::*};
 use crate::repository::sqlserver_repository_impl::*;
 use crate::traits::repository_traits::sqlserver_repository::*;
 use crate::traits::service_traits::{
-    daily_report_service::*, notification_service::*, query_service::*,
+    chart_service::*, daily_report_service::*, notification_service::*, notification_service::*,
+    query_service::*,
 };
 use crate::utils_modules::{io_utils::*, time_utils::*};
 
+use crate::model::{
+    configs::total_config::*,
+    index::{alert_index::*, index_list_config::*},
+    report::{daily_report::*, report_config::*},
+};
+
+
 #[derive(Debug, new)]
-pub struct DailyReportServiceImpl<Q: QueryService> {
+pub struct DailyReportServiceImpl<Q: QueryService, C: ChartService, N: NotificationService> {
     query_service: Q,
+    chart_service: C,
+    notification_service: Arc<N>,
 }
 
 #[async_trait]
-impl<Q: QueryService + Sync> DailyReportService for DailyReportServiceImpl<Q> {
+impl<Q, C, N> DailyReportService for DailyReportServiceImpl<Q, C, N>
+where
+    Q: QueryService + Sync,
+    C: ChartService,
+    N: NotificationService,
+{
+    #[doc = ""]
+    async fn daily_report_loop(
+        &self,
+        mon_index_name: &str,
+        target_index_info_list: &IndexListConfig,
+    ) -> anyhow::Result<()> {
+
+        let report_config: &ReportConfig = get_daily_report_config_info();
+
+        /* 데일리 보고용 활성화 여부 */
+        if !report_config.enabled {
+            info!(
+                "[MainController->daily_report_loop] Daily report is disabled. Skipping daily report scheduler."
+            );
+
+            /* 무한 대기 (데일리 보고용 기능 비활성화) */
+            loop {
+                tokio::time::sleep(std::time::Duration::from_secs(3600)).await;
+            }
+        }
+
+        info!(
+            "Starting daily report scheduler with cron schedule: {}",
+            report_config.cron_schedule
+        );
+
+        /* 크론 스케줄 파싱 */
+        let schedule: cron::Schedule = cron::Schedule::from_str(&report_config.cron_schedule)
+            .map_err(|e| {
+                anyhow!(
+                    "[MainController->daily_report_loop] Failed to parse cron schedule '{}': {:?}",
+                    report_config.cron_schedule,
+                    e
+                )
+            })?;
+        
+        loop {
+            
+            /* 보고용 스케쥴은 한국시간 기준으로 한다 GMT+9 */
+            let now_local: DateTime<Local> = chrono::Local::now();
+
+            /* 다음 실행 시간 계산 */
+            let next_run: DateTime<Local> = schedule
+                .upcoming(now_local.timezone())
+                .next()
+                .ok_or_else(|| anyhow!("[MainController->daily_report_loop] Failed to calculate next run time from cron schedule"))?;
+
+            let duration_until_next_run: Duration = match (next_run - now_local).to_std() {
+                Ok(next_run) => next_run,
+                Err(e) => {
+                    error!("[MainController->daily_report_loop] Failed to calculate duration: {:?}", e);
+                    continue;
+                }
+            };
+            
+            info!(
+                "Next daily report scheduled at: {}. Sleeping for {:?}",
+                next_run.format("%Y-%m-%d %H:%M:%S"),
+                duration_until_next_run
+            );
+
+            /* thread sleep */
+            tokio::time::sleep(duration_until_next_run).await;
+
+            // /* 일일 리포트 생성 및 발송 */
+            // info!("Starting daily report generation");
+            
+            /* 한국시간을 UTC 시간으로 변환 */
+            //let cur_utc_time: DateTime<Utc> = convert_utc_from_local(now_local);            
+        }
+    }
+
+    // #[doc = ""]
+    // async fn generate_daily_report(
+    //     &self,
+    //     target_index_info_list: &IndexListConfig,
+    //     mon_index_name: &str
+    // ) -> anyhow::Result<()> {
+
+    //     Ok(())
+    // }
+
     //     #[doc = ""]
     //     async fn generate_daily_report(
     //         &self,

@@ -7,4 +7,11 @@ pub trait NotificationService: Send + Sync {
         &self,
         log_index_results: &[LogIndexResult],
     ) -> Result<(), anyhow::Error>;
+
+    async fn send_daily_report_email(
+        &self,
+        email_subject: &str,
+        html_content: &str,
+        chart_img_path_list: &[PathBuf],
+    ) -> Result<(), anyhow::Error>;
 }

@@ -3,6 +3,16 @@ use crate::model::{index::index_list_config::*, report::daily_report::*};
 
 #[async_trait]
 pub trait DailyReportService {
+    async fn daily_report_loop(
+        &self,
+        mon_index_name: &str,
+        target_index_info_list: &IndexListConfig,
+    ) -> anyhow::Result<()>;
+    // async fn generate_daily_report(
+    //     &self,
+    //     target_index_info_list: &IndexListConfig,
+    //     mon_index_name: &str
+    // ) -> anyhow::Result<()>;
     // async fn generate_daily_report(
     //     &self,
     //     index_list: &IndexListConfig,

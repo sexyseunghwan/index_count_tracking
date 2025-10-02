@@ -13,7 +13,7 @@ impl Default for ReportConfig {
     fn default() -> Self {
         Self {
             enabled: true,
-            cron_schedule: "0 0 9 * * *".to_string(), // 매일 9시
+            cron_schedule: "0 0 9 * * *".to_string(), /* 매일 9시 -> 기본값 */
             timezone: "UTC".to_string(),
             subject_prefix: "[인덱스 모니터링]".to_string(),
             include_charts: false,

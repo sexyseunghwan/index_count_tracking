@@ -28,11 +28,13 @@ use utils_modules::logger_utils::*;
 mod service;
 use service::{
     chart_service_impl::*, daily_report_service_impl::*, notification_service_impl::*,
-    query_service_impl::*,
+    query_service_impl::*, tracking_monitor_service_impl::*,
 };
 
 mod controller;
 use controller::main_controller::*;
+
+use crate::controller::main_controller;
 
 mod dto;
 
@@ -66,27 +68,30 @@ async fn main() -> anyhow::Result<()> {
     );
 
     /* 의존 주입 */
-    let target_query_service: QueryServiceImpl = QueryServiceImpl::new(Arc::clone(&target_es_conn));
-    let mon_query_service: QueryServiceImpl = QueryServiceImpl::new(Arc::clone(&mon_es_conn));
     let notification_service: Arc<NotificationServiceImpl> =
         Arc::new(NotificationServiceImpl::new()?);
-    let daily_report_service: DailyReportServiceImpl<QueryServiceImpl> =
-        DailyReportServiceImpl::new(QueryServiceImpl::new(Arc::clone(&mon_es_conn)));
-    let flotter_chart_service: ChartServiceImpl = ChartServiceImpl::new();
+    let tracking_monitor_service: TrackingServiceImpl<QueryServiceImpl, NotificationServiceImpl> =
+        TrackingServiceImpl::new(
+            QueryServiceImpl::new(Arc::clone(&target_es_conn)),
+            QueryServiceImpl::new(Arc::clone(&mon_es_conn)),
+            Arc::clone(&notification_service),
+        );
+
+    let chart_service: ChartServiceImpl = ChartServiceImpl::new();
+    let daily_report_service: DailyReportServiceImpl<
+        QueryServiceImpl,
+        ChartServiceImpl,
+        NotificationServiceImpl,
+    > = DailyReportServiceImpl::new(
+        QueryServiceImpl::new(Arc::clone(&mon_es_conn)),
+        chart_service,
+        Arc::clone(&notification_service),
+    );
 
     let main_controller: MainController<
-        NotificationServiceImpl,
-        QueryServiceImpl,
-        QueryServiceImpl,
-        DailyReportServiceImpl<QueryServiceImpl>,
-        ChartServiceImpl,
-    > = MainController::new(
-        notification_service,
-        target_query_service,
-        mon_query_service,
-        daily_report_service,
-        flotter_chart_service,
-    );
+        TrackingServiceImpl<QueryServiceImpl, NotificationServiceImpl>,
+        DailyReportServiceImpl<QueryServiceImpl, ChartServiceImpl, NotificationServiceImpl>,
+    > = MainController::new(tracking_monitor_service, daily_report_service);
 
     if let Err(e) = main_controller.main_task().await {
         error!("Main task failed: {:?}", e);
