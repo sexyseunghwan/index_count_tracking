@@ -46,6 +46,7 @@ impl<T: TrackingMonitorService, D: DailyReportService> MainController<T, D> {
         let tracking_monitor_task = self
             .tracking_monitor_service
             .tracking_monitor_loop(mon_index_name, &target_index_info_list);
+        
         /* 2. 리포트 테스크 */
         let daily_report_task = self
             .daily_report_service

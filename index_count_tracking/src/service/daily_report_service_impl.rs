@@ -24,6 +24,13 @@ pub struct DailyReportServiceImpl<Q: QueryService, C: ChartService, N: Notificat
     notification_service: Arc<N>,
 }
 
+///* 데이터는 UTC 기준으로 쌓이기 때문에 UTC로 컨버팅 해준다. */
+//     //     let now_utc: DateTime<Utc> = convert_utc_from_local(now_local);
+
+// impl DailyReportServiceImpl {
+
+// }
+
 #[async_trait]
 impl<Q, C, N> DailyReportService for DailyReportServiceImpl<Q, C, N>
 where
@@ -52,11 +59,6 @@ where
             }
         }
 
-        info!(
-            "Starting daily report scheduler with cron schedule: {}",
-            report_config.cron_schedule
-        );
-
         /* 크론 스케줄 파싱 */
         let schedule: cron::Schedule = cron::Schedule::from_str(&report_config.cron_schedule)
             .map_err(|e| {
@@ -67,6 +69,11 @@ where
                 )
             })?;
         
+        info!(
+            "Starting daily report scheduler with cron schedule: {}",
+            report_config.cron_schedule
+        );
+
         loop {
             
             /* 보고용 스케쥴은 한국시간 기준으로 한다 GMT+9 */
