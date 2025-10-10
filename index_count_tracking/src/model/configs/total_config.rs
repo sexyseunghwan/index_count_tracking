@@ -29,6 +29,9 @@ pub struct TotalConfig {
     #[allow(dead_code)]
     pub smtp: SmtpConfig,
     pub daily_report: ReportConfig,
+    pub weekly_report: ReportConfig,
+    pub monthly_report: ReportConfig,
+    pub yearly_report: ReportConfig,
 }
 
 #[doc = "Elasticsearch config 정보"]
@@ -66,6 +69,22 @@ pub fn get_smtp_config_info() -> &'static SmtpConfig {
 pub fn get_daily_report_config_info() -> &'static ReportConfig {
     &TOTAL_CONFIG.daily_report
 }
+
+#[doc = "주간 보고용 정보"]
+pub fn get_weekly_report_config_info() -> &'static ReportConfig {
+    &TOTAL_CONFIG.weekly_report
+}
+
+#[doc = "월간 보고용 정보"]
+pub fn get_monthly_report_config_info() -> &'static ReportConfig {
+    &TOTAL_CONFIG.monthly_report
+}
+
+#[doc = "연간 보고용 정보"]
+pub fn get_yearly_report_config_info() -> &'static ReportConfig {
+    &TOTAL_CONFIG.yearly_report
+}
+
 
 impl TotalConfig {
     fn new() -> Self {

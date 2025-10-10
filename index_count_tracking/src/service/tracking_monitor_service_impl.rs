@@ -126,8 +126,8 @@ where
         target_index_info_list: &IndexListConfig,
     ) -> anyhow::Result<()> {
         /* 30초에 한번씩 스케쥴 */
-        let mut ticker: Interval = interval(Duration::from_secs(30));
-        
+        let mut ticker: Interval = interval(Duration::from_secs(5));
+
         loop {
             ticker.tick().await;
 

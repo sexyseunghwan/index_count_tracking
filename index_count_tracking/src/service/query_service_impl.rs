@@ -539,7 +539,7 @@ impl QueryService for QueryServiceImpl {
             )
             .await?;
 
-        /* 한국시간으로 변환해서 저장해준다. */
+        /***** !! 중요 - 한국시간으로 변환해서 저장해준다.!! ******/
         let report_indexes: Vec<AlertIndex> = alert_index_formats
             .into_iter()
             .map(|x| {

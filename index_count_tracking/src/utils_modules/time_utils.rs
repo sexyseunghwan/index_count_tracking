@@ -42,3 +42,8 @@ where
 pub fn minus_h(dt: DateTime<Utc>, hours: i64) -> DateTime<Utc> {
     dt - chrono::Duration::hours(hours)
 }
+
+#[doc = "특정 시각에서 특정 시각을 빼준 시각을 반환하는 함수"]
+pub fn minus_h_local(dt: DateTime<Local>, hours: i64) -> DateTime<Local> {
+    dt - chrono::Duration::hours(hours)
+}

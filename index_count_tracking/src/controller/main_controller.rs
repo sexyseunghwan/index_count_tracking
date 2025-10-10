@@ -13,17 +13,17 @@ use crate::dto::log_index_result::*;
 use crate::env_configuration::env_config::*;
 
 use crate::traits::service_traits::{
-    chart_service::*, daily_report_service::*, notification_service::*, query_service::*,
+    chart_service::*, report_service::*, notification_service::*, query_service::*,
     tracking_monitor_service::*,
 };
 
 #[derive(Debug, new)]
-pub struct MainController<T: TrackingMonitorService, D: DailyReportService> {
+pub struct MainController<T: TrackingMonitorService, R: ReportService> {
     tracking_monitor_service: T,
-    daily_report_service: D,
+    daily_report_service: R,
 }
 
-impl<T: TrackingMonitorService, D: DailyReportService> MainController<T, D> {
+impl<T: TrackingMonitorService, R: ReportService> MainController<T, R> {
     #[doc = r#"
         메인 루프를 실행하는 핵심 함수로, 30초 간격으로 인덱스 모니터링 작업을 반복 수행한다.
 
@@ -46,14 +46,14 @@ impl<T: TrackingMonitorService, D: DailyReportService> MainController<T, D> {
         let tracking_monitor_task = self
             .tracking_monitor_service
             .tracking_monitor_loop(mon_index_name, &target_index_info_list);
-        
-        /* 2. 리포트 테스크 */
-        let daily_report_task = self
-            .daily_report_service
-            .daily_report_loop(mon_index_name, &target_index_info_list);
 
-        /* 모니터링 태스크와 일일 리포트 태스크를 병렬로 실행 */
-        tokio::try_join!(tracking_monitor_task, daily_report_task)?;
+        /* 2. 리포트 테스크 */
+        // let daily_report_task = self
+        //     .daily_report_service
+        //     .daily_report_loop(mon_index_name, &target_index_info_list);
+
+        // /* 모니터링 태스크와 일일 리포트 태스크를 병렬로 실행 */
+        // tokio::try_join!(tracking_monitor_task, daily_report_task)?;
 
         Ok(())
     }
@@ -83,7 +83,6 @@ impl<T: TrackingMonitorService, D: DailyReportService> MainController<T, D> {
 //     pub async fn main_task(&self) -> anyhow::Result<()> {
 //         let index_list: IndexListConfig = read_toml_from_file::<IndexListConfig>(&INDEX_LIST_PATH)?;
 //         let mon_index_name: &str = get_system_config_info().monitor_index_name();
-
 //         /* 1. 모니터링 테스크 */
 //         //let monitoring_task = self.monitoring_loop(&index_list, mon_index_name);
 //         /* 2. 리포트 테스크 */

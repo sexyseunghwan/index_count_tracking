@@ -4,7 +4,7 @@ Create date : 2025-09-24
 Description : 색인되고 있는 인덱스 개수의 현황을 파악하고 변화율이 높으면 알람을 보내주는 프로그램
 
 History     : 2025-09-24 Seunghwan Shin       # [v.1.0.0] first create
-              2025-09-00 Seunghwan Shin       # [v.2.0.0] 정기적으로 특정 시간에 지난 24시간 공고수 추이 리포트를 메일로 보내주는 기능 추가
+              2025-10-00 Seunghwan Shin       # [v.2.0.0] 정기적으로 특정 시간에 지난 24시간 공고수 추이 리포트를 메일로 보내주는 기능 추가
 */
 
 mod common;
@@ -27,7 +27,7 @@ use utils_modules::logger_utils::*;
 
 mod service;
 use service::{
-    chart_service_impl::*, daily_report_service_impl::*, notification_service_impl::*,
+    chart_service_impl::*, report_service_impl::*, notification_service_impl::*,
     query_service_impl::*, tracking_monitor_service_impl::*,
 };
 
@@ -78,20 +78,17 @@ async fn main() -> anyhow::Result<()> {
         );
 
     let chart_service: ChartServiceImpl = ChartServiceImpl::new();
-    let daily_report_service: DailyReportServiceImpl<
+    let daily_report_service: ReportServiceImpl<
         QueryServiceImpl,
         ChartServiceImpl,
         NotificationServiceImpl,
-    > = DailyReportServiceImpl::new(
+    > = ReportServiceImpl::new(
         QueryServiceImpl::new(Arc::clone(&mon_es_conn)),
         chart_service,
         Arc::clone(&notification_service),
     );
 
-    let main_controller: MainController<
-        TrackingServiceImpl<QueryServiceImpl, NotificationServiceImpl>,
-        DailyReportServiceImpl<QueryServiceImpl, ChartServiceImpl, NotificationServiceImpl>,
-    > = MainController::new(tracking_monitor_service, daily_report_service);
+    let main_controller = MainController::new(tracking_monitor_service, daily_report_service);
 
     if let Err(e) = main_controller.main_task().await {
         error!("Main task failed: {:?}", e);
