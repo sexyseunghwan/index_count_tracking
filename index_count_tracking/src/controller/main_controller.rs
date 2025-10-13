@@ -1,29 +1,32 @@
 use crate::common::*;
+use std::sync::Arc;
 
-use crate::utils_modules::{io_utils::*, time_utils::*};
+use crate::utils_modules::io_utils::*;
 
 use crate::model::{
     configs::total_config::*,
-    index::{alert_index::*, index_list_config::*},
-    report::{daily_report::*, report_config::*},
+    index::index_list_config::*,
 };
-
-use crate::dto::log_index_result::*;
 
 use crate::env_configuration::env_config::*;
 
 use crate::traits::service_traits::{
-    chart_service::*, report_service::*, notification_service::*, query_service::*,
-    tracking_monitor_service::*,
+    report_service::*, tracking_monitor_service::*,
 };
+
+use crate::enums::report_type::*;
 
 #[derive(Debug, new)]
 pub struct MainController<T: TrackingMonitorService, R: ReportService> {
-    tracking_monitor_service: T,
-    daily_report_service: R,
+    tracking_monitor_service: Arc<T>,
+    report_service: Arc<R>,
 }
 
-impl<T: TrackingMonitorService, R: ReportService> MainController<T, R> {
+impl<T, R> MainController<T, R> 
+where
+    T: TrackingMonitorService + Send + Sync + 'static, 
+    R: ReportService + Send + Sync + 'static
+{
     #[doc = r#"
         메인 루프를 실행하는 핵심 함수로, 30초 간격으로 인덱스 모니터링 작업을 반복 수행한다.
 
@@ -38,24 +41,92 @@ impl<T: TrackingMonitorService, R: ReportService> MainController<T, R> {
         * `anyhow::Result<()>` - 정상 종료 시 Ok(()), 치명적 오류 시 Err
     "#]
     pub async fn main_task(&self) -> anyhow::Result<()> {
-        let target_index_info_list: IndexListConfig =
-            read_toml_from_file::<IndexListConfig>(&INDEX_LIST_PATH)?;
-        let mon_index_name: &str = get_system_config_info().monitor_index_name();
+        let target_index_info_list = Arc::new(
+            read_toml_from_file::<IndexListConfig>(&INDEX_LIST_PATH)?
+        );
+        let mon_index_name: Arc<str> = Arc::from(get_system_config_info().monitor_index_name().to_string());
 
         /* 1. 모니터링 테스크 */
-        let tracking_monitor_task = self
-            .tracking_monitor_service
-            .tracking_monitor_loop(mon_index_name, &target_index_info_list);
+        let tracking_monitor_handle = Self::spawn_tracking_monitor_task(
+            Arc::clone(&self.tracking_monitor_service),
+            Arc::clone(&mon_index_name),
+            Arc::clone(&target_index_info_list)
+        );
 
-        /* 2. 리포트 테스크 */
-        // let daily_report_task = self
-        //     .daily_report_service
-        //     .daily_report_loop(mon_index_name, &target_index_info_list);
+        /* 2. 일일 리포트 테스크 */
+        let daily_report_handle = Self::spawn_report_task(
+            Arc::clone(&self.report_service),
+            Arc::clone(&mon_index_name),
+            Arc::clone(&target_index_info_list),
+            ReportType::OneDay,
+            "daily_report_task"
+        );
 
-        // /* 모니터링 태스크와 일일 리포트 태스크를 병렬로 실행 */
-        // tokio::try_join!(tracking_monitor_task, daily_report_task)?;
+        /* 3. 주간 리포트 테스크 */
+        let weekly_report_handle = Self::spawn_report_task(
+            Arc::clone(&self.report_service),
+            Arc::clone(&mon_index_name),
+            Arc::clone(&target_index_info_list),
+            ReportType::OneWeek,
+            "weekly_report_task"
+        );
+
+        /* 4. 월간 리포트 테스크 */
+        let monthly_report_handle = Self::spawn_report_task(
+            Arc::clone(&self.report_service),
+            Arc::clone(&mon_index_name),
+            Arc::clone(&target_index_info_list),
+            ReportType::OneMonth,
+            "monthly_report_task"
+        );
+
+        /* 모든 태스크를 병렬로 실행하고 종료를 대기 */
+        let _ = tokio::join!(
+            tracking_monitor_handle,
+            daily_report_handle,
+            weekly_report_handle,
+            monthly_report_handle
+        );
 
         Ok(())
+    }
+
+    #[doc = "모니터링 태스크를 별도의 tokio task로 spawn"]
+    fn spawn_tracking_monitor_task(
+        service: Arc<T>,
+        mon_index_name: Arc<str>,
+        target_index_info_list: Arc<IndexListConfig>
+    ) -> tokio::task::JoinHandle<()>
+    where
+        T: Send + Sync + 'static
+    {
+        tokio::spawn(async move {
+            match service.tracking_monitor_loop(&mon_index_name, &target_index_info_list).await {
+                Ok(_) => info!("[tracking_monitor_task] Completed successfully"),
+                Err(e) => error!("[tracking_monitor_task] Failed with error: {:?}", e),
+            }
+        })
+    }
+
+    #[doc = "리포트 태스크를 별도의 tokio task로 spawn"]
+    fn spawn_report_task(
+        service: Arc<R>,
+        mon_index_name: Arc<str>,
+        target_index_info_list: Arc<IndexListConfig>,
+        report_type: ReportType,
+        task_name: &str
+    ) -> tokio::task::JoinHandle<()>
+    where
+        R: Send + Sync + 'static
+    {
+        let task_name = task_name.to_string();
+
+        tokio::spawn(async move {
+            match service.report_loop(&mon_index_name, &target_index_info_list, report_type).await {
+                Ok(_) => info!("[{}] Completed successfully", task_name),
+                Err(e) => error!("[{}] Failed with error: {:?}", task_name, e),
+            }
+        })
     }
 }
 

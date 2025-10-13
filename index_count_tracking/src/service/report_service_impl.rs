@@ -177,7 +177,7 @@ where
 }
 
 #[async_trait]
-impl<Q, C, N> DailyReportService for DailyReportServiceImpl<Q, C, N>
+impl<Q, C, N> ReportService for ReportServiceImpl<Q, C, N>
 where
     Q: QueryService + Sync,
     C: ChartService,
@@ -191,6 +191,7 @@ where
         report_type: ReportType
     ) -> anyhow::Result<()> {
         
+        /* 리포트 타입이 어떤 타입인지 확인 */
         let report_config: &ReportConfig = match report_type {
             ReportType::OneDay => get_daily_report_config_info(),
             ReportType::OneWeek => get_weekly_report_config_info(),
@@ -198,7 +199,7 @@ where
             ReportType::OneYear => get_yearly_report_config_info(),
         };
 
-        /* 데일리 보고용 활성화 여부 */
+        /* 해당 타입 보고용 활성화 여부 */
         if !report_config.enabled {
             info!(
                 "[MainController->daily_report_loop] Daily report is disabled. Skipping daily report scheduler."

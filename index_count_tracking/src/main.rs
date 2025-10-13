@@ -70,6 +70,7 @@ async fn main() -> anyhow::Result<()> {
     /* 의존 주입 */
     let notification_service: Arc<NotificationServiceImpl> =
         Arc::new(NotificationServiceImpl::new()?);
+        
     let tracking_monitor_service: TrackingServiceImpl<QueryServiceImpl, NotificationServiceImpl> =
         TrackingServiceImpl::new(
             QueryServiceImpl::new(Arc::clone(&target_es_conn)),
@@ -88,7 +89,10 @@ async fn main() -> anyhow::Result<()> {
         Arc::clone(&notification_service),
     );
 
-    let main_controller = MainController::new(tracking_monitor_service, daily_report_service);
+    let main_controller = MainController::new(
+        Arc::new(tracking_monitor_service),
+        Arc::new(daily_report_service)
+    );
 
     if let Err(e) = main_controller.main_task().await {
         error!("Main task failed: {:?}", e);
