@@ -128,9 +128,9 @@ where
                 index_result.index_name().to_string(),
                 index_result.cur_cnt,
                 index_result.fluctuation_val,
-                convert_date_to_str(cur_timestamp_utc, Utc)
+                convert_date_to_str(cur_timestamp_utc, Utc),
             );
-            
+
             self.mon_query_service
                 .post_alarm_history_index(loggin_index_name, alarm_history_form)
                 .await?;
@@ -146,7 +146,7 @@ where
     Q: QueryService + Sync + Send,
     N: NotificationService + Sync + Send,
 {
-    #[doc = ""]
+    #[doc = "특정 인덱스의 문서 개수를 계속해서 모니터링 해주는 함수"]
     async fn tracking_monitor_loop(
         &self,
         mon_index_name: &str,
@@ -189,13 +189,19 @@ where
 
             if index_doc_verification.len() > 0 {
                 /* 3. 알람 히스토리 보관을 위해서 로깅해주는 로직 */
-                if let Err(e) = self.logging_alarm_history_infos(&index_doc_verification, cur_timestamp_utc).await {
+                if let Err(e) = self
+                    .logging_alarm_history_infos(&index_doc_verification, cur_timestamp_utc)
+                    .await
+                {
                     error!("[MainController->monitoring_loop] {:?}", e);
                 }
-                
+
                 /* 4. 검증 결과를 바탕으로 알람을 보내주는 로직 */
                 if let Err(e) = self.alert_index_status(&index_doc_verification).await {
-                    error!("[MainController->monitoring_loop] Failed to send alert: {:?}", e);
+                    error!(
+                        "[MainController->monitoring_loop] Failed to send alert: {:?}",
+                        e
+                    );
                 }
             }
         }

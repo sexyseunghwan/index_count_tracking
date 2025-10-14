@@ -38,4 +38,10 @@ pub trait QueryService {
     //     index_name: &str,
     //     query: &serde_json::Value,
     // ) -> anyhow::Result<serde_json::Value>;
+    async fn get_start_time_all_indicies_count(
+        &self,
+        mon_index_name: &str,
+        start_time: DateTime<Utc>,
+        end_time: DateTime<Utc>,
+    ) -> anyhow::Result<()>;
 }

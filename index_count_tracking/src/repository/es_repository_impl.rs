@@ -113,7 +113,6 @@ impl EsRepository for EsRepositoryImpl {
         index_name: &str,
     ) -> Result<(), anyhow::Error> {
         let struct_json: Value = convert_json_from_struct(param_struct)?;
-        println!("{:?}", struct_json);
         self.post_query(&struct_json, index_name).await?;
 
         Ok(())

@@ -426,7 +426,7 @@ impl QueryService for QueryServiceImpl {
         Ok(())
     }
 
-    #[doc = ""]
+    #[doc = "AlarmLogHistoryIndex 구조체를 지정된 Elasticsearch 인덱스에 문서로 색인(저장)하는 함수."]
     async fn post_alarm_history_index(
         &self,
         index_name: &str,
@@ -436,10 +436,7 @@ impl QueryService for QueryServiceImpl {
             .post_query_struct(&alarm_history_index, index_name)
             .await
             .unwrap_or_else(|e| {
-                error!(
-                    "[QueryServiceImpl->post_alarm_history_index] {:?}",
-                    e
-                );
+                error!("[QueryServiceImpl->post_alarm_history_index] {:?}", e);
             });
 
         Ok(())
@@ -573,5 +570,55 @@ impl QueryService for QueryServiceImpl {
             .collect();
 
         Ok(report_indexes)
+    }
+
+    #[doc = ""]
+    async fn get_start_time_all_indicies_count(
+        &self,
+        mon_index_name: &str,
+        start_time: DateTime<Utc>,
+        end_time: DateTime<Utc>,
+    ) -> anyhow::Result<()> {
+        
+        let search_query: Value = json!({
+            "size": 1,
+            "track_total_hits": false,
+            "query": {
+                "range": {
+                    "timestamp": {
+                        "gte": convert_date_to_str(start_time, Utc),
+                        "lte": convert_date_to_str(end_time, Utc)
+                    }
+                }
+            },
+            "aggs": {
+                "by_index": {
+                    "terms": {
+                        "field": "index_name.keyword",
+                        "size": 1000
+                    },
+                    "aggs": {
+                        "earliest_cnt": {
+                            "top_metrics": {
+                                "sort": { "timestamp": "asc" },
+                                "metrics": [
+                                    { "field": "cnt" },
+                                    { "field": "timestamp" }
+                                ]
+                            }
+                        }
+                    }
+                }
+            }
+        });
+
+        let response_body: Value = self
+            .es_conn
+            .get_search_query(&search_query, mon_index_name)
+            .await?;
+
+        info!("{:?}", response_body);
+
+        Ok(())
     }
 }

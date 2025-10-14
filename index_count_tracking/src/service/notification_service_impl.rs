@@ -597,7 +597,7 @@ impl NotificationServiceImpl {
                 .file_name()
                 .and_then(|n| n.to_str())
                 .unwrap_or("chart.png");
-            
+
             img_tags.push_str(&format!(
                 r#"<div style="margin-bottom: 20px;">
                     <h3 style="color: #555; margin-bottom: 10px;">{}</h3>
@@ -703,8 +703,7 @@ impl NotificationService for NotificationServiceImpl {
 
         Ok(())
     }
-    
-    
+
     async fn send_daily_report_email(
         &self,
         email_subject: &str,

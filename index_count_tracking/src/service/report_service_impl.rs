@@ -39,15 +39,27 @@ where
         local_time: DateTime<Local>,
         report_type: ReportType,
     ) -> anyhow::Result<()> {
+        /* 집계 이미지 경로 벡터 */
         let mut img_paths: Vec<PathBuf> = Vec::new();
 
         let hour: i64 = get_days(report_type) * 24;
+        let prev_local_time: DateTime<Local> = minus_h_local(local_time, hour);
+        let utc_from_local: DateTime<Utc> = convert_utc_from_local(local_time);
+        let prev_hour_utc_time: DateTime<Utc> = minus_h(utc_from_local, hour);
 
         /* 그래프를 가져오기 위함 */
         for index in target_index_info_list.index() {
             /* 1. 그래프 생성 */
             let graph_path: PathBuf = match self
-                .generate_index_history_graph(mon_index_name, index.index_name(), local_time, hour)
+                .generate_index_history_graph(
+                    mon_index_name,
+                    index.index_name(),
+                    local_time,
+                    prev_local_time,
+                    utc_from_local,
+                    prev_hour_utc_time,
+                    hour
+                )
                 .await
             {
                 Ok(graph_path) => graph_path,
@@ -66,14 +78,73 @@ where
             convert_date_to_str(local_time, Local)
         );
 
+        /* 시작 시점 총 문서 수 */
+        self.query_service.get_start_time_all_indicies_count(mon_index_name, prev_hour_utc_time, utc_from_local).await?;
+        /* 종료 시점 총 문서 수 */
+
+        /* 총 변동량 */
+
+        /* 알람 발생 인덱스 개수 */
+
+        /* 총 알람 수 */
+
+        // 아래의 함수에 더 넣어줘야 할듯
         let html_content: String =
             self.generate_daily_report_html(target_index_info_list, local_time, report_type)?;
 
+        /* 이메일로 리포트를 보내줌 */
         self.notification_service
             .send_daily_report_email(&email_subject, &html_content, &img_paths)
             .await?;
 
         Ok(())
+    }
+
+    #[doc = "Elasticsearch 에서 집계하여 그래프를 생성하고 이미지를 저장한 뒤 해당 이미지의 경로를 리턴해주는 함수"]
+    async fn generate_index_history_graph(
+        &self,
+        mon_index_name: &str,
+        index_name: &str,
+        local_time: DateTime<Local>,
+        prev_local_time: DateTime<Local>,
+        utc_time: DateTime<Utc>,
+        prev_utc_time: DateTime<Utc>,
+        hour: i64
+    ) -> anyhow::Result<PathBuf> {
+        /* elasticsearch query 집계 */
+        let index_cnt_history: Vec<AlertIndex> = self
+            .query_service
+            .get_report_infos_from_log_index(mon_index_name, index_name, prev_utc_time, utc_time)
+            .await?;
+
+        let mut x_label: Vec<String> = Vec::new();
+        let mut y_label: Vec<i64> = Vec::new();
+
+        for index_info in index_cnt_history {
+            x_label.push(index_info.timestamp);
+            y_label.push(index_info.cnt as i64);
+        }
+
+        let output_path: PathBuf =
+            PathBuf::from(format!("./pics/{}_line_chart_{}.png", hour, index_name));
+
+        self.chart_service
+            .generate_line_chart(
+                &format!(
+                    "[{} ~ {}] {}",
+                    convert_date_to_str(prev_local_time, Local),
+                    convert_date_to_str(local_time, Local),
+                    index_name
+                ),
+                x_label,
+                y_label,
+                &output_path,
+                "timestamp",
+                "index count",
+            )
+            .await?;
+
+        Ok(output_path)
     }
 
     #[doc = "일일 리포트용 HTML 생성 (템플릿 기반) - 검증중"]
@@ -136,54 +207,6 @@ where
 
         rows
     }
-
-    #[doc = ""]
-    async fn generate_index_history_graph(
-        &self,
-        mon_index_name: &str,
-        index_name: &str,
-        local_time: DateTime<Local>,
-        hour: i64,
-    ) -> anyhow::Result<PathBuf> {
-        let prev_local_time: DateTime<Local> = minus_h_local(local_time, hour);
-        let utc_time: DateTime<Utc> = convert_utc_from_local(local_time);
-        let prev_utc_time: DateTime<Utc> = minus_h(utc_time, hour);
-
-        /* elasticsearch query 집계 */
-        let index_cnt_history: Vec<AlertIndex> = self
-            .query_service
-            .get_report_infos_from_log_index(mon_index_name, index_name, prev_utc_time, utc_time)
-            .await?;
-
-        let mut x_label: Vec<String> = Vec::new();
-        let mut y_label: Vec<i64> = Vec::new();
-
-        for index_info in index_cnt_history {
-            x_label.push(index_info.timestamp);
-            y_label.push(index_info.cnt as i64);
-        }
-
-        let output_path: PathBuf =
-            PathBuf::from(format!("./pics/{}_line_chart_{}.png", hour, index_name));
-
-        self.chart_service
-            .generate_line_chart(
-                &format!(
-                    "[{} ~ {}] {}",
-                    convert_date_to_str(prev_local_time, Local),
-                    convert_date_to_str(local_time, Local),
-                    index_name
-                ),
-                x_label,
-                y_label,
-                &output_path,
-                "timestamp",
-                "index count",
-            )
-            .await?;
-
-        Ok(output_path)
-    }
 }
 
 #[async_trait]
@@ -193,7 +216,7 @@ where
     C: ChartService,
     N: NotificationService,
 {
-    #[doc = ""]
+    #[doc = "리포트 서비스를 제공해주는 함수"]
     async fn report_loop(
         &self,
         mon_index_name: &str,
@@ -245,6 +268,8 @@ where
                 .next()
                 .ok_or_else(|| anyhow!("[MainController->daily_report_loop] Failed to calculate next run time from cron schedule"))?;
 
+            
+
             let duration_until_next_run: Duration = match (next_run - now_local).to_std() {
                 Ok(next_run) => next_run,
                 Err(e) => {
@@ -258,19 +283,28 @@ where
 
             info!(
                 "Next daily report scheduled at: {}. Sleeping for {:?}",
-                next_run.format("%Y-%m-%d %H:%M:%S"),
+                next_run.format("%Y-%m-%dT%H:%M:%S"),
                 duration_until_next_run
-            );            
+            );
 
             /* thread sleep */
-            //tokio::time::sleep(duration_until_next_run).await;
+            /* tokio::time::sleep(duration_until_next_run).await; */
             let wake: Instant = Instant::now() + duration_until_next_run;
             sleep_until(wake).await;
-            
-            self.report_index_cnt_task(mon_index_name, target_index_info_list, now_local, report_type)
-                .await.unwrap_or_else(|e| {
-                    error!("{:?}", e);
-                });
+
+            /* 메일 보내주는 시각이 되면 함수가 동작함 */
+            self.report_index_cnt_task(
+                mon_index_name,
+                target_index_info_list,
+                now_local,
+                report_type,
+            )
+            .await
+            .unwrap_or_else(|e| {
+                error!("{:?}", e);
+            });
         }
     }
 }
+
+

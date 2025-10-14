@@ -82,7 +82,7 @@ where
             weekly_report_handle,
             monthly_report_handle
         );
-        
+
         Ok(())
     }
 

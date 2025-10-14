@@ -1,6 +1,6 @@
 pub use std::{env, fmt::Display, fs, io::Write, path::PathBuf, str::FromStr, sync::Arc};
 
-pub use tokio::time::{Duration, Interval, interval, sleep, Instant, sleep_until};
+pub use tokio::time::{Duration, Instant, Interval, interval, sleep, sleep_until};
 
 pub use anyhow::{Context, anyhow};
 pub use async_trait::async_trait;
