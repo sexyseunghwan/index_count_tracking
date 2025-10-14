@@ -1,7 +1,8 @@
 use crate::common::*;
 
 use crate::model::configs::{
-    elastic_server_config::*, rdb_config::*, smtp_config::*, system_config::*, telegram_config::*,
+    alarm_log_index::*, elastic_server_config::*, rdb_config::*, smtp_config::*, system_config::*,
+    telegram_config::*,
 };
 
 use crate::model::report::report_config::*;
@@ -28,6 +29,7 @@ pub struct TotalConfig {
     pub system: SystemConfig,
     #[allow(dead_code)]
     pub smtp: SmtpConfig,
+    pub alarm_log_index: AlarmLogIndex,
     pub daily_report: ReportConfig,
     pub weekly_report: ReportConfig,
     pub monthly_report: ReportConfig,
@@ -52,6 +54,11 @@ pub fn get_telegram_config_info() -> &'static TelegramConfig {
 #[doc = "Sql Server 설정 정보"]
 pub fn get_sqlserver_config_info() -> &'static RdbConfig {
     &TOTAL_CONFIG.sqlserver
+}
+
+#[doc = "Alarm 히스토리 인덱스 설정 정보"]
+pub fn get_alarm_log_index_info() -> &'static AlarmLogIndex {
+    &TOTAL_CONFIG.alarm_log_index
 }
 
 #[doc = "system 설정 정보"]
@@ -84,7 +91,6 @@ pub fn get_monthly_report_config_info() -> &'static ReportConfig {
 pub fn get_yearly_report_config_info() -> &'static ReportConfig {
     &TOTAL_CONFIG.yearly_report
 }
-
 
 impl TotalConfig {
     fn new() -> Self {

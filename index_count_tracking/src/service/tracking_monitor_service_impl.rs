@@ -4,6 +4,9 @@ use crate::traits::service_traits::{
     notification_service::*, query_service::*, tracking_monitor_service::*,
 };
 
+use crate::model::configs::{alarm_log_index::*, total_config::*};
+
+use crate::model::alarm::alarm_log_history_index::*;
 use crate::model::index::{alert_index::*, index_list_config::*};
 
 use crate::dto::log_index_result::*;
@@ -67,8 +70,8 @@ where
         &self,
         mon_index_name: &str,
         target_index_info_list: &IndexListConfig,
+        cur_timestamp_utc: DateTime<Utc>,
     ) -> anyhow::Result<Vec<LogIndexResult>> {
-        let cur_timestamp_utc: DateTime<Utc> = Utc::now();
         let mut log_index_results: Vec<LogIndexResult> = Vec::new();
 
         for index_config in target_index_info_list.index() {
@@ -111,6 +114,30 @@ where
 
         Ok(())
     }
+
+    #[doc = "알람 이력을 기록해주는 함수"]
+    async fn logging_alarm_history_infos(
+        &self,
+        index_doc_verification: &Vec<LogIndexResult>,
+        cur_timestamp_utc: DateTime<Utc>,
+    ) -> anyhow::Result<()> {
+        let loggin_index_name: &str = get_alarm_log_index_info().index_name();
+
+        for index_result in index_doc_verification {
+            let alarm_history_form: AlarmLogHistoryIndex = AlarmLogHistoryIndex::new(
+                index_result.index_name().to_string(),
+                index_result.cur_cnt,
+                index_result.fluctuation_val,
+                convert_date_to_str(cur_timestamp_utc, Utc)
+            );
+            
+            self.mon_query_service
+                .post_alarm_history_index(loggin_index_name, alarm_history_form)
+                .await?;
+        }
+
+        Ok(())
+    }
 }
 
 #[async_trait]
@@ -143,9 +170,11 @@ where
                 continue;
             }
 
+            let cur_timestamp_utc: DateTime<Utc> = Utc::now();
+
             /* 2. 인덱스 문서 개수 검증 */
             let index_doc_verification: Vec<LogIndexResult> = match self
-                .verify_index_cnt(mon_index_name, target_index_info_list)
+                .verify_index_cnt(mon_index_name, target_index_info_list, cur_timestamp_utc)
                 .await
             {
                 Ok(results) => results,
@@ -159,12 +188,14 @@ where
             };
 
             if index_doc_verification.len() > 0 {
-                /* 3. 검증 결과를 바탕으로 알람을 보내주는 로직 */
+                /* 3. 알람 히스토리 보관을 위해서 로깅해주는 로직 */
+                if let Err(e) = self.logging_alarm_history_infos(&index_doc_verification, cur_timestamp_utc).await {
+                    error!("[MainController->monitoring_loop] {:?}", e);
+                }
+                
+                /* 4. 검증 결과를 바탕으로 알람을 보내주는 로직 */
                 if let Err(e) = self.alert_index_status(&index_doc_verification).await {
-                    error!(
-                        "[MainController->monitoring_loop] Failed to send alert: {:?}",
-                        e
-                    );
+                    error!("[MainController->monitoring_loop] Failed to send alert: {:?}", e);
                 }
             }
         }

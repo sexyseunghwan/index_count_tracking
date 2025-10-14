@@ -2,6 +2,8 @@ use crate::common::*;
 
 use crate::model::index::{alert_index::*, index_config::*};
 
+use crate::model::alarm::alarm_log_history_index::*;
+
 use crate::dto::log_index_result::*;
 
 #[async_trait]
@@ -25,6 +27,11 @@ pub trait QueryService {
         start_timestamp: DateTime<Utc>,
         end_timestamp: DateTime<Utc>,
     ) -> anyhow::Result<Vec<AlertIndex>>;
+    async fn post_alarm_history_index(
+        &self,
+        index_name: &str,
+        alarm_history_index: AlarmLogHistoryIndex,
+    ) -> anyhow::Result<()>;
     //anyhow::Result<Vec<AlertIndex>>;
     // async fn execute_search_query(
     //     &self,

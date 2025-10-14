@@ -49,8 +49,7 @@ impl NotificationServiceImpl {
     pub fn new() -> anyhow::Result<Self> {
         let receiver_email_list = read_toml_from_file::<ReceiverEmailConfig>(&EMAIL_RECEIVER_PATH)
             .map_err(|e| {
-                let err_msg = "[ERROR][NotificationServiceImpl->new] Failed to retrieve information 'receiver_email_list'.";
-                error!("{} : {:?}", err_msg, e);
+                let err_msg: &str = "[NotificationServiceImpl->new] Failed to retrieve information 'receiver_email_list'.";
                 anyhow!("{} : {:?}", err_msg, e)
             })?;
 
@@ -588,17 +587,17 @@ impl NotificationServiceImpl {
     ) -> anyhow::Result<String> {
         use base64::{Engine as _, engine::general_purpose};
 
-        let mut img_tags = String::new();
+        let mut img_tags: String = String::new();
 
         for img_path in chart_img_path_list {
-            let img_data = tokio::fs::read(img_path).await?;
-            let base64_data = general_purpose::STANDARD.encode(&img_data);
+            let img_data: Vec<u8> = tokio::fs::read(img_path).await?;
+            let base64_data: String = general_purpose::STANDARD.encode(&img_data);
 
-            let filename = img_path
+            let filename: &str = img_path
                 .file_name()
                 .and_then(|n| n.to_str())
                 .unwrap_or("chart.png");
-
+            
             img_tags.push_str(&format!(
                 r#"<div style="margin-bottom: 20px;">
                     <h3 style="color: #555; margin-bottom: 10px;">{}</h3>
@@ -628,7 +627,7 @@ impl NotificationServiceImpl {
         # Returns
         * `anyhow::Result<()>` - 발송 프로세스 완료 여부
     "#]
-    async fn send_daily_report_email_impl(
+    async fn send_report_email_impl(
         &self,
         email_subject: &str,
         html_content: &str,
@@ -640,12 +639,12 @@ impl NotificationServiceImpl {
         );
 
         /* 이미지를 Base64로 변환 */
-        let base64_images = self
+        let base64_images: String = self
             .convert_images_to_base64_html(chart_img_path_list)
             .await?;
 
         /* HTML에 이미지 삽입 */
-        let final_html = html_content.replace("{{CHART_IMAGES}}", &base64_images);
+        let final_html: String = html_content.replace("{{CHART_IMAGES}}", &base64_images);
 
         /* SMTP 버전 - 첨부파일 없이 HTML만 전송 */
         self.send_message_to_receivers_smtp(email_subject, &final_html)
@@ -704,14 +703,15 @@ impl NotificationService for NotificationServiceImpl {
 
         Ok(())
     }
-
+    
+    
     async fn send_daily_report_email(
         &self,
         email_subject: &str,
         html_content: &str,
         chart_img_path_list: &[PathBuf],
     ) -> Result<(), anyhow::Error> {
-        self.send_daily_report_email_impl(email_subject, html_content, chart_img_path_list)
+        self.send_report_email_impl(email_subject, html_content, chart_img_path_list)
             .await
     }
 }

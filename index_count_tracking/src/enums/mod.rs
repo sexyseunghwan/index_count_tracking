@@ -1,2 +1,2 @@
-pub mod sort_order;
 pub mod report_type;
+pub mod sort_order;

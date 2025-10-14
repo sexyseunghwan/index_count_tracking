@@ -5,8 +5,8 @@ use crate::model::{index::index_list_config::*, report::daily_report::*};
 use crate::repository::sqlserver_repository_impl::*;
 use crate::traits::repository_traits::sqlserver_repository::*;
 use crate::traits::service_traits::{
-    chart_service::*, report_service::*, notification_service::*, notification_service::*,
-    query_service::*,
+    chart_service::*, notification_service::*, notification_service::*, query_service::*,
+    report_service::*,
 };
 use crate::utils_modules::{io_utils::*, time_utils::*};
 
@@ -25,7 +25,6 @@ pub struct ReportServiceImpl<Q: QueryService, C: ChartService, N: NotificationSe
     notification_service: Arc<N>,
 }
 
-
 impl<Q, C, N> ReportServiceImpl<Q, C, N>
 where
     Q: QueryService + Sync,
@@ -38,11 +37,13 @@ where
         mon_index_name: &str,
         target_index_info_list: &IndexListConfig,
         local_time: DateTime<Local>,
-        hour: i64
+        report_type: ReportType,
     ) -> anyhow::Result<()> {
         let mut img_paths: Vec<PathBuf> = Vec::new();
 
-        /* 여기에 코드를 넣어주는게 맞아보이는데? -> 그래프를 가져오기 위함 */
+        let hour: i64 = get_days(report_type) * 24;
+
+        /* 그래프를 가져오기 위함 */
         for index in target_index_info_list.index() {
             /* 1. 그래프 생성 */
             let graph_path: PathBuf = match self
@@ -66,7 +67,7 @@ where
         );
 
         let html_content: String =
-            self.generate_daily_report_html(target_index_info_list, local_time)?;
+            self.generate_daily_report_html(target_index_info_list, local_time, report_type)?;
 
         self.notification_service
             .send_daily_report_email(&email_subject, &html_content, &img_paths)
@@ -80,6 +81,7 @@ where
         &self,
         index_list: &IndexListConfig,
         report_date: DateTime<Local>,
+        report_type: ReportType,
     ) -> anyhow::Result<String> {
         /* HTML 템플릿 파일 읽기 */
         let template_content: String =
@@ -90,8 +92,16 @@ where
                 )
             })?;
 
+        let report_name: &str = match report_type {
+            ReportType::OneDay => "일일",
+            ReportType::OneWeek => "주간",
+            ReportType::OneMonth => "월간",
+            ReportType::OneYear => "연간",
+        };
+
         /* 템플릿 플레이스홀더 교체 */
         let html_content: String = template_content
+            .replace("{{REPORT_TYPE}}", report_name)
             .replace("{{REPORT_DATE}}", &convert_date_to_str(report_date, Local))
             .replace("{{TOTAL_INDICES}}", &index_list.index().len().to_string())
             .replace("{{TOTAL_DOCS_START}}", "N/A") // 추후 실제 데이터로 교체 가능
@@ -133,7 +143,7 @@ where
         mon_index_name: &str,
         index_name: &str,
         local_time: DateTime<Local>,
-        hour: i64
+        hour: i64,
     ) -> anyhow::Result<PathBuf> {
         let prev_local_time: DateTime<Local> = minus_h_local(local_time, hour);
         let utc_time: DateTime<Utc> = convert_utc_from_local(local_time);
@@ -154,8 +164,8 @@ where
         }
 
         let output_path: PathBuf =
-            PathBuf::from(format!("./pics/{}_line_chart_{}.png", hour, index_name)); 
-        
+            PathBuf::from(format!("./pics/{}_line_chart_{}.png", hour, index_name));
+
         self.chart_service
             .generate_line_chart(
                 &format!(
@@ -171,7 +181,7 @@ where
                 "index count",
             )
             .await?;
-        
+
         Ok(output_path)
     }
 }
@@ -188,9 +198,8 @@ where
         &self,
         mon_index_name: &str,
         target_index_info_list: &IndexListConfig,
-        report_type: ReportType
+        report_type: ReportType,
     ) -> anyhow::Result<()> {
-        
         /* 리포트 타입이 어떤 타입인지 확인 */
         let report_config: &ReportConfig = match report_type {
             ReportType::OneDay => get_daily_report_config_info(),
@@ -204,7 +213,7 @@ where
             info!(
                 "[MainController->daily_report_loop] Daily report is disabled. Skipping daily report scheduler."
             );
-            
+
             /* 무한 대기 (데일리 보고용 기능 비활성화) */
             loop {
                 tokio::time::sleep(std::time::Duration::from_secs(3600)).await;
@@ -226,20 +235,10 @@ where
             report_config.cron_schedule
         );
 
-        let hour: i64 = get_days(report_type) * 24;
-
         loop {
             /* 보고용 스케쥴은 한국시간 기준으로 한다 GMT+9 */
             let now_local: DateTime<Local> = chrono::Local::now();
 
-            match self.report_index_cnt_task(mon_index_name, target_index_info_list, now_local, hour).await {
-                Ok(_) => (),
-                Err(e) => {
-                    error!("{:?}", e);
-
-                } 
-            }
-            
             /* 다음 실행 시간 계산 */
             let next_run: DateTime<Local> = schedule
                 .upcoming(now_local.timezone())
@@ -261,10 +260,17 @@ where
                 "Next daily report scheduled at: {}. Sleeping for {:?}",
                 next_run.format("%Y-%m-%d %H:%M:%S"),
                 duration_until_next_run
-            );
+            );            
 
             /* thread sleep */
-            tokio::time::sleep(duration_until_next_run).await;
+            //tokio::time::sleep(duration_until_next_run).await;
+            let wake: Instant = Instant::now() + duration_until_next_run;
+            sleep_until(wake).await;
+            
+            self.report_index_cnt_task(mon_index_name, target_index_info_list, now_local, report_type)
+                .await.unwrap_or_else(|e| {
+                    error!("{:?}", e);
+                });
         }
     }
 }

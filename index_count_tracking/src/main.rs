@@ -27,50 +27,53 @@ use utils_modules::logger_utils::*;
 
 mod service;
 use service::{
-    chart_service_impl::*, report_service_impl::*, notification_service_impl::*,
-    query_service_impl::*, tracking_monitor_service_impl::*,
+    chart_service_impl::*, notification_service_impl::*, query_service_impl::*,
+    report_service_impl::*, tracking_monitor_service_impl::*,
 };
 
 mod controller;
 use controller::main_controller::*;
-
-use crate::controller::main_controller;
 
 mod dto;
 
 mod enums;
 
 #[tokio::main]
-async fn main() -> anyhow::Result<()> {
+async fn main() {
     /* 전역로거 설정 및 초기 설정 */
     dotenv().ok();
     set_global_logger();
 
-    info!("Tracking program start!");
+    info!("Index Tracking program start!");
 
     /* Elasticsearch connection */
     /* 모니터링 대상 Elasticsearch cluster conneciton */
     let target_es_conn: Arc<EsRepositoryImpl> = Arc::new(
-        EsRepositoryImpl::new(get_elastic_config_info()).map_err(|e| {
-            let err_msg = "[main] An issue occurred while initializing target_es_conn.";
+        EsRepositoryImpl::new(get_elastic_config_info()).unwrap_or_else(|e| {
+            let err_msg: &str = "[main] An issue occurred while initializing target_es_conn.";
             error!("{} {:?}", err_msg, e);
-            anyhow!("{} {:?}", err_msg, e)
-        })?,
+            panic!("{} {:?}", err_msg, e);
+        }),
     );
 
-    /* 모니터링용 Elasticsearch cluster conneciton */
     let mon_es_conn: Arc<EsRepositoryImpl> = Arc::new(
-        EsRepositoryImpl::new(get_mon_elastic_config_info()).map_err(|e| {
-            let err_msg: &'static str = "[main] An issue occurred while initializing mon_es_conn.";
+        EsRepositoryImpl::new(get_mon_elastic_config_info()).unwrap_or_else(|e| {
+            let err_msg: &str = "[main] An issue occurred while initializing mon_es_conn.";
             error!("{} {:?}", err_msg, e);
-            anyhow!("{} {:?}", err_msg, e)
-        })?,
+            panic!("{} {:?}", err_msg, e);
+        }),
     );
 
-    /* 의존 주입 */
+    /* ==================================================== */
+    /* =============== Dependency Injection =============== */
+    /* ==================================================== */
     let notification_service: Arc<NotificationServiceImpl> =
-        Arc::new(NotificationServiceImpl::new()?);
-        
+        Arc::new(NotificationServiceImpl::new().unwrap_or_else(|e| {
+            error!("{:?}", e);
+            panic!("{:?}", e);
+        }));
+
+    /* 트래킹 모니터링 서비스 */
     let tracking_monitor_service: TrackingServiceImpl<QueryServiceImpl, NotificationServiceImpl> =
         TrackingServiceImpl::new(
             QueryServiceImpl::new(Arc::clone(&target_es_conn)),
@@ -78,8 +81,9 @@ async fn main() -> anyhow::Result<()> {
             Arc::clone(&notification_service),
         );
 
+    /* 차트 서비스 */
     let chart_service: ChartServiceImpl = ChartServiceImpl::new();
-    let daily_report_service: ReportServiceImpl<
+    let report_service: ReportServiceImpl<
         QueryServiceImpl,
         ChartServiceImpl,
         NotificationServiceImpl,
@@ -89,15 +93,16 @@ async fn main() -> anyhow::Result<()> {
         Arc::clone(&notification_service),
     );
 
-    let main_controller = MainController::new(
-        Arc::new(tracking_monitor_service),
-        Arc::new(daily_report_service)
-    );
+    let main_controller: MainController<
+        TrackingServiceImpl<QueryServiceImpl, NotificationServiceImpl>,
+        ReportServiceImpl<QueryServiceImpl, ChartServiceImpl, NotificationServiceImpl>,
+    > = MainController::new(Arc::new(tracking_monitor_service), Arc::new(report_service));
 
-    if let Err(e) = main_controller.main_task().await {
-        error!("Main task failed: {:?}", e);
-        return Err(e);
-    }
-
-    Ok(())
+    /* ==================================================== */
+    /* ==================================================== */
+    /* ==================================================== */
+    main_controller.main_task().await.unwrap_or_else(|e| {
+        error!("{:?}", e);
+        panic!("{:?}", e);
+    });
 }

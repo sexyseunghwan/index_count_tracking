@@ -9,7 +9,7 @@ pub trait ReportService {
         &self,
         mon_index_name: &str,
         target_index_info_list: &IndexListConfig,
-        report_type: ReportType
+        report_type: ReportType,
     ) -> anyhow::Result<()>;
     // async fn generate_daily_report(
     //     &self,

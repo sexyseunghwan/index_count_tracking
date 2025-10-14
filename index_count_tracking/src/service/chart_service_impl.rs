@@ -148,7 +148,6 @@ impl ChartService for ChartServiceImpl {
                 Ok(())
             });
 
-        // 5) 에러를 단계별로 분리해 가독성 있게 처리
         let drawing_result: Result<(), anyhow::Error> = handle.await.context(
             "[ChartServiceImpl->generate_line_chart] blocking task join failed (panic/cancelled)",
         )?;

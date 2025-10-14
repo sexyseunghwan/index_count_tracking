@@ -3,16 +3,11 @@ use std::sync::Arc;
 
 use crate::utils_modules::io_utils::*;
 
-use crate::model::{
-    configs::total_config::*,
-    index::index_list_config::*,
-};
+use crate::model::{configs::total_config::*, index::index_list_config::*};
 
 use crate::env_configuration::env_config::*;
 
-use crate::traits::service_traits::{
-    report_service::*, tracking_monitor_service::*,
-};
+use crate::traits::service_traits::{report_service::*, tracking_monitor_service::*};
 
 use crate::enums::report_type::*;
 
@@ -22,10 +17,10 @@ pub struct MainController<T: TrackingMonitorService, R: ReportService> {
     report_service: Arc<R>,
 }
 
-impl<T, R> MainController<T, R> 
+impl<T, R> MainController<T, R>
 where
-    T: TrackingMonitorService + Send + Sync + 'static, 
-    R: ReportService + Send + Sync + 'static
+    T: TrackingMonitorService + Send + Sync + 'static,
+    R: ReportService + Send + Sync + 'static,
 {
     #[doc = r#"
         메인 루프를 실행하는 핵심 함수로, 30초 간격으로 인덱스 모니터링 작업을 반복 수행한다.
@@ -41,16 +36,16 @@ where
         * `anyhow::Result<()>` - 정상 종료 시 Ok(()), 치명적 오류 시 Err
     "#]
     pub async fn main_task(&self) -> anyhow::Result<()> {
-        let target_index_info_list = Arc::new(
-            read_toml_from_file::<IndexListConfig>(&INDEX_LIST_PATH)?
-        );
-        let mon_index_name: Arc<str> = Arc::from(get_system_config_info().monitor_index_name().to_string());
+        let target_index_info_list: Arc<IndexListConfig> =
+            Arc::new(read_toml_from_file::<IndexListConfig>(&INDEX_LIST_PATH)?);
+        let mon_index_name: Arc<str> =
+            Arc::from(get_system_config_info().monitor_index_name().to_string());
 
         /* 1. 모니터링 테스크 */
         let tracking_monitor_handle = Self::spawn_tracking_monitor_task(
             Arc::clone(&self.tracking_monitor_service),
             Arc::clone(&mon_index_name),
-            Arc::clone(&target_index_info_list)
+            Arc::clone(&target_index_info_list),
         );
 
         /* 2. 일일 리포트 테스크 */
@@ -59,7 +54,7 @@ where
             Arc::clone(&mon_index_name),
             Arc::clone(&target_index_info_list),
             ReportType::OneDay,
-            "daily_report_task"
+            "daily_report_task",
         );
 
         /* 3. 주간 리포트 테스크 */
@@ -68,7 +63,7 @@ where
             Arc::clone(&mon_index_name),
             Arc::clone(&target_index_info_list),
             ReportType::OneWeek,
-            "weekly_report_task"
+            "weekly_report_task",
         );
 
         /* 4. 월간 리포트 테스크 */
@@ -77,7 +72,7 @@ where
             Arc::clone(&mon_index_name),
             Arc::clone(&target_index_info_list),
             ReportType::OneMonth,
-            "monthly_report_task"
+            "monthly_report_task",
         );
 
         /* 모든 태스크를 병렬로 실행하고 종료를 대기 */
@@ -87,7 +82,7 @@ where
             weekly_report_handle,
             monthly_report_handle
         );
-
+        
         Ok(())
     }
 
@@ -95,13 +90,16 @@ where
     fn spawn_tracking_monitor_task(
         service: Arc<T>,
         mon_index_name: Arc<str>,
-        target_index_info_list: Arc<IndexListConfig>
+        target_index_info_list: Arc<IndexListConfig>,
     ) -> tokio::task::JoinHandle<()>
     where
-        T: Send + Sync + 'static
+        T: Send + Sync + 'static,
     {
         tokio::spawn(async move {
-            match service.tracking_monitor_loop(&mon_index_name, &target_index_info_list).await {
+            match service
+                .tracking_monitor_loop(&mon_index_name, &target_index_info_list)
+                .await
+            {
                 Ok(_) => info!("[tracking_monitor_task] Completed successfully"),
                 Err(e) => error!("[tracking_monitor_task] Failed with error: {:?}", e),
             }
@@ -114,15 +112,18 @@ where
         mon_index_name: Arc<str>,
         target_index_info_list: Arc<IndexListConfig>,
         report_type: ReportType,
-        task_name: &str
+        task_name: &str,
     ) -> tokio::task::JoinHandle<()>
     where
-        R: Send + Sync + 'static
+        R: Send + Sync + 'static,
     {
-        let task_name = task_name.to_string();
+        let task_name: String = task_name.to_string();
 
         tokio::spawn(async move {
-            match service.report_loop(&mon_index_name, &target_index_info_list, report_type).await {
+            match service
+                .report_loop(&mon_index_name, &target_index_info_list, report_type)
+                .await
+            {
                 Ok(_) => info!("[{}] Completed successfully", task_name),
                 Err(e) => error!("[{}] Failed with error: {:?}", task_name, e),
             }

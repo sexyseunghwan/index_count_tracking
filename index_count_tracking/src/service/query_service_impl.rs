@@ -6,6 +6,7 @@ use crate::repository::es_repository_impl::*;
 
 use crate::utils_modules::{time_utils::*, traits::*};
 
+use crate::model::alarm::alarm_log_history_index::*;
 use crate::model::index::{alert_index::*, alert_index_format::*, index_config::*};
 
 use crate::dto::log_index_result::*;
@@ -420,6 +421,25 @@ impl QueryService for QueryServiceImpl {
             .await
             .unwrap_or_else(|e| {
                 error!("[QueryServiceImpl->post_log_index] {:?}", e);
+            });
+
+        Ok(())
+    }
+
+    #[doc = ""]
+    async fn post_alarm_history_index(
+        &self,
+        index_name: &str,
+        alarm_history_index: AlarmLogHistoryIndex,
+    ) -> anyhow::Result<()> {
+        self.es_conn
+            .post_query_struct(&alarm_history_index, index_name)
+            .await
+            .unwrap_or_else(|e| {
+                error!(
+                    "[QueryServiceImpl->post_alarm_history_index] {:?}",
+                    e
+                );
             });
 
         Ok(())

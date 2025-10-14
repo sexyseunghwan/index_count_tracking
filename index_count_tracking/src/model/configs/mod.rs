@@ -1,3 +1,4 @@
+pub mod alarm_log_index;
 pub mod elastic_server_config;
 pub mod rdb_config;
 pub mod receiver_email_config;

@@ -100,7 +100,7 @@ impl EsRepository for EsRepositoryImpl {
         } else {
             let error_body: String = response.text().await?;
             Err(anyhow!(
-                "[Elasticsearch Error][node_search_query()] response status is failed: {:?}",
+                "[node_search_query()] response status is failed: {:?}",
                 error_body
             ))
         }
@@ -113,6 +113,7 @@ impl EsRepository for EsRepositoryImpl {
         index_name: &str,
     ) -> Result<(), anyhow::Error> {
         let struct_json: Value = convert_json_from_struct(param_struct)?;
+        println!("{:?}", struct_json);
         self.post_query(&struct_json, index_name).await?;
 
         Ok(())
@@ -137,7 +138,7 @@ impl EsRepository for EsRepositoryImpl {
             Ok(())
         } else {
             let error_message = format!(
-                "[Elasticsearch Error][node_post_query()] Failed to index document: Status Code: {}",
+                "[node_post_query()] Failed to index document: Status Code: {}",
                 response.status_code()
             );
             Err(anyhow!(error_message))
@@ -167,7 +168,7 @@ impl EsRepository for EsRepositoryImpl {
             Ok(())
         } else {
             let error_message = format!(
-                "[Elasticsearch Error][node_delete_query()] Failed to delete document: Status Code: {}, Document ID: {}",
+                "[node_delete_query()] Failed to delete document: Status Code: {}, Document ID: {}",
                 response.status_code(),
                 doc_id
             );
