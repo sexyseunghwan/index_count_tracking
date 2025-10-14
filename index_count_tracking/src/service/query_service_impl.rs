@@ -9,7 +9,7 @@ use crate::utils_modules::{time_utils::*, traits::*};
 use crate::model::alarm::alarm_log_history_index::*;
 use crate::model::index::{alert_index::*, alert_index_format::*, index_config::*};
 
-use crate::dto::log_index_result::*;
+use crate::dto::{log_index_result::*, index_count_agg_result::*};
 
 use crate::enums::sort_order::*;
 
@@ -19,6 +19,59 @@ pub struct QueryServiceImpl {
 }
 
 impl QueryServiceImpl {
+    #[doc = r#"
+        Elasticsearch 집계 응답을 파싱하여 벡터 형태의 구조화된 객체로 변환하는 제네릭 함수.
+
+        1. ES 응답의 `aggregations.[agg_name].buckets` 배열에서 각 버킷을 추출
+        2. 각 버킷을 `FromAggBucket` 트레이트를 통해 타입 `T`로 변환
+        3. 모든 결과를 벡터로 수집하여 반환
+
+        # Type Parameters
+        * `T` - 최종 반환할 객체 타입 (`FromAggBucket` 트레이트 구현 필요)
+
+        # Arguments
+        * `response_body` - Elasticsearch 집계 응답 JSON
+        * `agg_name` - 집계 쿼리의 이름 (응답에서 참조용)
+
+        # Returns
+        * `Vec<T>` - 변환된 객체들의 벡터
+        * `anyhow::Error` - 응답 파싱 실패, 필수 필드 누락, 역직렬화 실패 시
+    "#]
+    fn get_aggregation_result_vec<T>(
+        &self,
+        response_body: &Value,
+        agg_name: &str,
+    ) -> Result<Vec<T>, anyhow::Error>
+    where
+        T: FromAggBucket,
+    {
+        let buckets: &Value = response_body
+            .get("aggregations")
+            .and_then(|agg| agg.get(agg_name))
+            .and_then(|named_agg| named_agg.get("buckets"))
+            .ok_or_else(|| {
+                anyhow!(
+                    "[QueryServiceImpl->get_aggregation_result_vec] Missing 'aggregations.{}.buckets' field",
+                    agg_name
+                )
+            })?;
+
+        let arr: &Vec<Value> = buckets.as_array().ok_or_else(|| {
+            anyhow!(
+                "[QueryServiceImpl->get_aggregation_result_vec] 'aggregations.{}.buckets' is not an array",
+                agg_name
+            )
+        })?;
+
+        /* 각 bucket을 T로 변환 */
+        let results: Vec<T> = arr
+            .iter()
+            .map(|bucket| T::from_agg_bucket(bucket))
+            .collect::<Result<_, _>>()?;
+
+        Ok(results)
+    }
+
     #[doc = r#"
         Elasticsearch 검색 응답을 파싱하여 벡터 형태의 구조화된 객체로 변환하는 제네릭 함수.
 
@@ -355,6 +408,65 @@ impl QueryServiceImpl {
 
         self.get_query_result_vec::<AlertIndexFormat, AlertIndex>(&response_body)
     }
+
+    #[doc = ""]
+    async fn get_start_time_all_indicies_count<'a>(
+        &self,
+        mon_index_name: &str,
+        start_time: DateTime<Utc>,
+        end_time: DateTime<Utc>,
+        sorts: Option<Vec<SortSpec<'a>>>
+    ) -> anyhow::Result<Vec<IndexCountAggResult>> {
+        
+        let sort_json: Vec<Value> = sorts
+            .unwrap_or_default()
+            .iter()
+            .map(|spec| spec.to_es_json())
+            .collect();
+
+        let search_query: Value = json!({
+            "size": 1,
+            "track_total_hits": false,
+            "query": {
+                "range": {
+                    "timestamp": {
+                        "gte": convert_date_to_str(start_time, Utc),
+                        "lte": convert_date_to_str(end_time, Utc)
+                    }
+                }
+            },
+            "aggs": {
+                "by_index": {
+                    "terms": {
+                        "field": "index_name.keyword",
+                        "size": 1000
+                    },
+                    "aggs": {
+                        "est_cnt": {
+                            "top_metrics": {
+                                "sort": sort_json,
+                                "metrics": [
+                                    { "field": "cnt" },
+                                    { "field": "timestamp" }
+                                ]
+                            }
+                        }
+                    }
+                }
+            }
+        });
+        
+        let response_body: Value = self
+            .es_conn
+            .get_search_query(&search_query, mon_index_name)
+            .await?;
+        
+        /* get_aggregation_result_vec를 사용하여 집계 결과 파싱 */
+        let results: Vec<IndexCountAggResult> =
+            self.get_aggregation_result_vec(&response_body, "by_index")?;
+
+        Ok(results)
+    }
 }
 
 #[async_trait]
@@ -572,53 +684,93 @@ impl QueryService for QueryServiceImpl {
         Ok(report_indexes)
     }
 
-    #[doc = ""]
+    #[doc = r#"
+        지정된 시간 범위 내에서 모든 인덱스의 최초 시점 카운트 정보를 조회하는 함수.
+
+        1. 시간 범위(`start_time` ~ `end_time`) 내의 모든 문서를 대상으로 검색
+        2. `index_name.keyword` 필드로 그룹화하여 인덱스별 집계 수행
+        3. 각 인덱스별로 `top_metrics` 집계를 사용하여 가장 이른 시점의 cnt와 timestamp 조회
+        4. `get_aggregation_result_vec`를 통해 집계 결과를 구조화된 객체로 파싱
+        5. 파싱된 결과를 `IndexCountAggResult` 벡터로 반환
+
+        # Arguments
+        * `mon_index_name` - 모니터링 데이터가 저장된 인덱스명
+        * `start_time` - 조회 시작 시간 (UTC)
+        * `end_time` - 조회 종료 시간 (UTC)
+
+        # Returns
+        * `Vec<IndexCountAggResult>` - 인덱스별 최초 카운트 정보 목록
+        * `anyhow::Error` - ES 조회 실패 또는 파싱 실패 시
+    "#]
     async fn get_start_time_all_indicies_count(
         &self,
         mon_index_name: &str,
         start_time: DateTime<Utc>,
         end_time: DateTime<Utc>,
-    ) -> anyhow::Result<()> {
-        
-        let search_query: Value = json!({
-            "size": 1,
-            "track_total_hits": false,
-            "query": {
-                "range": {
-                    "timestamp": {
-                        "gte": convert_date_to_str(start_time, Utc),
-                        "lte": convert_date_to_str(end_time, Utc)
-                    }
-                }
-            },
-            "aggs": {
-                "by_index": {
-                    "terms": {
-                        "field": "index_name.keyword",
-                        "size": 1000
-                    },
-                    "aggs": {
-                        "earliest_cnt": {
-                            "top_metrics": {
-                                "sort": { "timestamp": "asc" },
-                                "metrics": [
-                                    { "field": "cnt" },
-                                    { "field": "timestamp" }
-                                ]
-                            }
-                        }
-                    }
-                }
+    ) -> anyhow::Result<Vec<IndexCountAggResult>> {
+
+        let sorts: Vec<SortSpec<'_>> = vec![
+            SortSpec {
+                field: "timestamp",
+                order: SortOrder::Asc,
             }
-        });
+        ];
+        
+        let results: Vec<IndexCountAggResult> = self.get_start_time_all_indicies_count(mon_index_name, start_time, end_time, Some(sorts)).await?;
 
-        let response_body: Value = self
-            .es_conn
-            .get_search_query(&search_query, mon_index_name)
-            .await?;
+        // let search_query: Value = json!({
+        //     "size": 1,
+        //     "track_total_hits": false,
+        //     "query": {
+        //         "range": {
+        //             "timestamp": {
+        //                 "gte": convert_date_to_str(start_time, Utc),
+        //                 "lte": convert_date_to_str(end_time, Utc)
+        //             }
+        //         }
+        //     },
+        //     "aggs": {
+        //         "by_index": {
+        //             "terms": {
+        //                 "field": "index_name.keyword",
+        //                 "size": 1000
+        //             },
+        //             "aggs": {
+        //                 "est_cnt": {
+        //                     "top_metrics": {
+        //                         "sort": { "timestamp": "asc" },
+        //                         "metrics": [
+        //                             { "field": "cnt" },
+        //                             { "field": "timestamp" }
+        //                         ]
+        //                     }
+        //                 }
+        //             }
+        //         }
+        //     }
+        // });
+        
+        // let response_body: Value = self
+        //     .es_conn
+        //     .get_search_query(&search_query, mon_index_name)
+        //     .await?;
 
-        info!("{:?}", response_body);
+        // /* get_aggregation_result_vec를 사용하여 집계 결과 파싱 */
+        // let results: Vec<IndexCountAggResult> =
+        //     self.get_aggregation_result_vec(&response_body, "by_index")?;
 
-        Ok(())
+        // info!("[QueryServiceImpl->get_start_time_all_indicies_count] Found {} indices", results.len());
+
+        for result in &results {
+            info!(
+                "  - index: {}, doc_count: {}, cnt: {}, timestamp: {}",
+                result.index_name(),
+                result.doc_count(),
+                result.cnt(),
+                result.timestamp()
+            );
+        }
+        
+        Ok(results)
     }
 }
