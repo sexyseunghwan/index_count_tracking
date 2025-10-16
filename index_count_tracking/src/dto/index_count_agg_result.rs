@@ -1,5 +1,6 @@
 use crate::common::*;
-use crate::utils_modules::traits::FromAggBucket;
+
+use crate::utils_modules::traits::*;
 
 #[doc = r#"
     Elasticsearch 집계 응답에서 인덱스별 최초 카운트 정보를 담는 DTO
@@ -13,10 +14,10 @@ use crate::utils_modules::traits::FromAggBucket;
 #[derive(Debug, Clone, Serialize, Deserialize, Getters, Setters, new)]
 #[getset(get = "pub", set = "pub")]
 pub struct IndexCountAggResult {
-    index_name: String,
-    doc_count: usize,
-    cnt: usize,
-    timestamp: String,
+    pub index_name: String,
+    pub doc_count: usize,
+    pub cnt: usize,
+    pub timestamp: String,
 }
 
 impl FromAggBucket for IndexCountAggResult {

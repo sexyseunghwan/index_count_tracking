@@ -4,7 +4,7 @@ use crate::model::index::{alert_index::*, index_config::*};
 
 use crate::model::alarm::alarm_log_history_index::*;
 
-use crate::dto::{log_index_result::*, index_count_agg_result::*};
+use crate::dto::{index_count_agg_result::*, log_index_result::*, index_name_count::*};
 
 #[async_trait]
 pub trait QueryService {
@@ -44,4 +44,16 @@ pub trait QueryService {
         start_time: DateTime<Utc>,
         end_time: DateTime<Utc>,
     ) -> anyhow::Result<Vec<IndexCountAggResult>>;
+    async fn get_end_time_all_indicies_count(
+        &self,
+        mon_index_name: &str,
+        start_time: DateTime<Utc>,
+        end_time: DateTime<Utc>,
+    ) -> anyhow::Result<Vec<IndexCountAggResult>>;
+    async fn get_index_name_aggregations(&self,
+        alarm_index_name: &str,
+        start_time: DateTime<Utc>,
+        end_time: DateTime<Utc>,
+    ) -> anyhow::Result<()>;
+    //) -> anyhow::Result<IndexNameCount>;
 }

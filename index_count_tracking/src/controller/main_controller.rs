@@ -40,6 +40,8 @@ where
             Arc::new(read_toml_from_file::<IndexListConfig>(&INDEX_LIST_PATH)?);
         let mon_index_name: Arc<str> =
             Arc::from(get_system_config_info().monitor_index_name().to_string());
+        let alarm_index_name: Arc<str> =
+            Arc::from(get_alarm_log_index_info().index_name().to_string());
 
         /* 1. 모니터링 테스크 */
         let tracking_monitor_handle = Self::spawn_tracking_monitor_task(
@@ -52,6 +54,7 @@ where
         let daily_report_handle = Self::spawn_report_task(
             Arc::clone(&self.report_service),
             Arc::clone(&mon_index_name),
+            Arc::clone(&alarm_index_name),
             Arc::clone(&target_index_info_list),
             ReportType::OneDay,
             "daily_report_task",
@@ -61,6 +64,7 @@ where
         let weekly_report_handle = Self::spawn_report_task(
             Arc::clone(&self.report_service),
             Arc::clone(&mon_index_name),
+            Arc::clone(&alarm_index_name),
             Arc::clone(&target_index_info_list),
             ReportType::OneWeek,
             "weekly_report_task",
@@ -70,6 +74,7 @@ where
         let monthly_report_handle = Self::spawn_report_task(
             Arc::clone(&self.report_service),
             Arc::clone(&mon_index_name),
+            Arc::clone(&alarm_index_name),
             Arc::clone(&target_index_info_list),
             ReportType::OneMonth,
             "monthly_report_task",
@@ -85,7 +90,7 @@ where
 
         Ok(())
     }
-
+    
     #[doc = "모니터링 태스크를 별도의 tokio task로 spawn"]
     fn spawn_tracking_monitor_task(
         service: Arc<T>,
@@ -110,6 +115,7 @@ where
     fn spawn_report_task(
         service: Arc<R>,
         mon_index_name: Arc<str>,
+        alarm_index_name: Arc<str>,
         target_index_info_list: Arc<IndexListConfig>,
         report_type: ReportType,
         task_name: &str,
@@ -121,7 +127,7 @@ where
 
         tokio::spawn(async move {
             match service
-                .report_loop(&mon_index_name, &target_index_info_list, report_type)
+                .report_loop(&mon_index_name, &alarm_index_name, &target_index_info_list, report_type)
                 .await
             {
                 Ok(_) => info!("[{}] Completed successfully", task_name),

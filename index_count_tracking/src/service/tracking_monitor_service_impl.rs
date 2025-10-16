@@ -4,7 +4,7 @@ use crate::traits::service_traits::{
     notification_service::*, query_service::*, tracking_monitor_service::*,
 };
 
-use crate::model::configs::{alarm_log_index::*, total_config::*};
+use crate::model::configs::total_config::*;
 
 use crate::model::alarm::alarm_log_history_index::*;
 use crate::model::index::{alert_index::*, index_list_config::*};

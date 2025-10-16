@@ -1,20 +1,14 @@
 use crate::common::*;
 use crate::env_configuration::env_config::*;
-use crate::model::configs::total_config::get_system_config_info;
-use crate::model::{index::index_list_config::*, report::daily_report::*};
-use crate::repository::sqlserver_repository_impl::*;
-use crate::traits::repository_traits::sqlserver_repository::*;
+use crate::model::index::index_list_config::*;
 use crate::traits::service_traits::{
-    chart_service::*, notification_service::*, notification_service::*, query_service::*,
-    report_service::*,
+    chart_service::*, notification_service::*, query_service::*, report_service::*,
 };
-use crate::utils_modules::{io_utils::*, time_utils::*};
+use crate::utils_modules::time_utils::*;
 
-use crate::model::{
-    configs::total_config::*,
-    index::{alert_index::*, index_list_config::*},
-    report::{daily_report::*, report_config::*},
-};
+use crate::model::{configs::total_config::*, index::alert_index::*, report::report_config::*};
+
+use crate::dto::index_count_agg_result::*;
 
 use crate::enums::report_type::*;
 
@@ -35,6 +29,7 @@ where
     async fn report_index_cnt_task(
         &self,
         mon_index_name: &str,
+        alarm_index_name: &str,
         target_index_info_list: &IndexListConfig,
         local_time: DateTime<Local>,
         report_type: ReportType,
@@ -58,7 +53,7 @@ where
                     prev_local_time,
                     utc_from_local,
                     prev_hour_utc_time,
-                    hour
+                    hour,
                 )
                 .await
             {
@@ -79,13 +74,23 @@ where
         );
 
         /* 시작 시점 총 문서 수 */
-        self.query_service.get_start_time_all_indicies_count(mon_index_name, prev_hour_utc_time, utc_from_local).await?;
-        /* 종료 시점 총 문서 수 */
+        let start_time_all_index_cnt: Vec<IndexCountAggResult> = self
+            .query_service
+            .get_start_time_all_indicies_count(mon_index_name, prev_hour_utc_time, utc_from_local)
+            .await?;
 
-        /* 총 변동량 */
+        /* 종료 시점 총 문서 수 */
+        let end_time_all_index_cnt: Vec<IndexCountAggResult> = self
+            .query_service
+            .get_start_time_all_indicies_count(mon_index_name, prev_hour_utc_time, utc_from_local)
+            .await?;
+
+        /* 총 변동량 -> |시작시점 총 문서 수 - 종료시점 총 문서 수| */
+        let total_difference: usize =
+            self.calc_start_end_index_cnt(&start_time_all_index_cnt, &end_time_all_index_cnt);
 
         /* 알람 발생 인덱스 개수 */
-
+        
         /* 총 알람 수 */
 
         // 아래의 함수에 더 넣어줘야 할듯
@@ -109,7 +114,7 @@ where
         prev_local_time: DateTime<Local>,
         utc_time: DateTime<Utc>,
         prev_utc_time: DateTime<Utc>,
-        hour: i64
+        hour: i64,
     ) -> anyhow::Result<PathBuf> {
         /* elasticsearch query 집계 */
         let index_cnt_history: Vec<AlertIndex> = self
@@ -145,6 +150,18 @@ where
             .await?;
 
         Ok(output_path)
+    }
+
+    #[doc = ""]
+    fn calc_start_end_index_cnt(
+        &self,
+        start_time_all_index_cnt: &Vec<IndexCountAggResult>,
+        end_time_all_index_cnt: &Vec<IndexCountAggResult>,
+    ) -> usize {
+        let start_total_cnt: usize = start_time_all_index_cnt.iter().map(|x| x.cnt).sum();
+        let end_total_cnt: usize = end_time_all_index_cnt.iter().map(|x| x.cnt).sum();
+
+        start_total_cnt.abs_diff(end_total_cnt)
     }
 
     #[doc = "일일 리포트용 HTML 생성 (템플릿 기반) - 검증중"]
@@ -220,6 +237,7 @@ where
     async fn report_loop(
         &self,
         mon_index_name: &str,
+        alarm_index_name: &str,
         target_index_info_list: &IndexListConfig,
         report_type: ReportType,
     ) -> anyhow::Result<()> {
@@ -242,7 +260,7 @@ where
                 tokio::time::sleep(std::time::Duration::from_secs(3600)).await;
             }
         }
-
+        
         /* 크론 스케줄 파싱 */
         let schedule: cron::Schedule = cron::Schedule::from_str(&report_config.cron_schedule)
             .map_err(|e| {
@@ -267,8 +285,6 @@ where
                 .upcoming(now_local.timezone())
                 .next()
                 .ok_or_else(|| anyhow!("[MainController->daily_report_loop] Failed to calculate next run time from cron schedule"))?;
-
-            
 
             let duration_until_next_run: Duration = match (next_run - now_local).to_std() {
                 Ok(next_run) => next_run,
@@ -295,6 +311,7 @@ where
             /* 메일 보내주는 시각이 되면 함수가 동작함 */
             self.report_index_cnt_task(
                 mon_index_name,
+                alarm_index_name,
                 target_index_info_list,
                 now_local,
                 report_type,
@@ -306,5 +323,3 @@ where
         }
     }
 }
-
-

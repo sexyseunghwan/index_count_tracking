@@ -1,5 +1,3 @@
-use crate::common::*;
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ReportType {
     OneDay,

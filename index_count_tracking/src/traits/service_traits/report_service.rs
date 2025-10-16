@@ -1,5 +1,5 @@
 use crate::common::*;
-use crate::model::{index::index_list_config::*, report::daily_report::*};
+use crate::model::index::index_list_config::*;
 
 use crate::enums::report_type::*;
 
@@ -8,6 +8,7 @@ pub trait ReportService {
     async fn report_loop(
         &self,
         mon_index_name: &str,
+        alarm_index_name: &str,
         target_index_info_list: &IndexListConfig,
         report_type: ReportType,
     ) -> anyhow::Result<()>;

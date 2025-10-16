@@ -8,10 +8,10 @@ use crate::model::{
     index::alert_index::*,
 };
 
-use crate::traits::repository_traits::{sqlserver_repository::*, telegram_repository::*};
+use crate::traits::repository_traits::telegram_repository::*;
 use crate::traits::service_traits::notification_service::*;
 
-use crate::repository::{sqlserver_repository_impl::*, telegram_repository_impl::*};
+use crate::repository::telegram_repository_impl::*;
 
 use crate::utils_modules::io_utils::*;
 
