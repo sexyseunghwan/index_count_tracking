@@ -1,17 +1,16 @@
 use crate::common::*;
 
+use crate::dto::alarm::alarm_report_infos::AlarmReportInfos;
 use crate::traits::{repository_traits::es_repository::*, service_traits::query_service::*};
 
 use crate::repository::es_repository_impl::*;
 
 use crate::utils_modules::{time_utils::*, traits::*};
 
-use crate::model::alarm::alarm_log_history_index::*;
+use crate::dto::alarm::alarm_log_history_index::*;
 use crate::model::index::{alert_index::*, alert_index_format::*, index_config::*};
 
-use crate::dto::{
-    index_count_agg_result::*, log_index_result::*, index_name_count::*
-};
+use crate::dto::{index_count_agg_result::*, index_name_count::*, log_index_result::*};
 
 use crate::enums::sort_order::*;
 
@@ -47,6 +46,8 @@ impl QueryServiceImpl {
     where
         T: FromAggBucket,
     {
+        info!("response_body: {:?}", response_body);
+
         let buckets: &Value = response_body
             .get("aggregations")
             .and_then(|agg| agg.get(agg_name))
@@ -57,14 +58,14 @@ impl QueryServiceImpl {
                     agg_name
                 )
             })?;
-        
+
         let arr: &Vec<Value> = buckets.as_array().ok_or_else(|| {
             anyhow!(
                 "[QueryServiceImpl->get_aggregation_result_vec] 'aggregations.{}.buckets' is not an array",
                 agg_name
             )
         })?;
-        
+
         /* 각 bucket을 T로 변환 */
         let results: Vec<T> = arr
             .iter()
@@ -81,22 +82,43 @@ impl QueryServiceImpl {
         agg_name: &str,
     ) -> anyhow::Result<T>
     where
-        T: TryFrom<f64>,
-        <T as TryFrom<f64>>::Error: std::fmt::Display,
+        T: FromJsonNumeric,
     {
-        let value = response_body
+        let num: &Value = response_body
             .get("aggregations")
             .and_then(|agg| agg.get(agg_name))
             .and_then(|named| named.get("value"))
-            .and_then(|v| v.as_f64())
             .ok_or_else(|| anyhow!(
-                "[QueryServiceImpl->get_aggregation_metric_value] Missing 'aggregations.{}.value' (or not a number)",
+                "[QueryServiceImpl->get_aggregation_metric_value] Missing 'aggregations.{}.value'",
                 agg_name
             ))?;
 
-        T::try_from(value).map_err(|e| anyhow!(
-            "[QueryServiceImpl->get_aggregation_metric_value] Failed to convert value to target type: {}",
-            e
+        // serde_json::Number로 안전하게 접근
+        let number: Option<f64> = num
+            .as_f64()
+            .or_else(|| num.as_u64().map(|u| u as f64))
+            .or_else(|| num.as_i64().map(|i| i as f64));
+
+        // 먼저 정수로 읽을 수 있으면 정수 우선 변환 → 안 되면 f64로
+        if let Some(u) = num.as_u64() {
+            if let Some(v) = T::from_u64(u) {
+                return Ok(v);
+            }
+        }
+        if let Some(i) = num.as_i64() {
+            if let Some(v) = T::from_i64(i) {
+                return Ok(v);
+            }
+        }
+        if let Some(f) = num.as_f64() {
+            if let Some(v) = T::from_f64(f) {
+                return Ok(v);
+            }
+        }
+
+        Err(anyhow!(
+            "[QueryServiceImpl->get_aggregation_metric_value] 'aggregations.{}.value' is not a supported numeric for target type",
+            agg_name
         ))
     }
 
@@ -490,7 +512,7 @@ impl QueryServiceImpl {
 
         /* get_aggregation_result_vec를 사용하여 집계 결과 파싱 */
         let results: Vec<IndexCountAggResult> =
-            self.get_aggregation_result_vec(&response_body, "by_index_name")?;// 기존에는 by_index로 되어있었음
+            self.get_aggregation_result_vec(&response_body, "by_index")?;
 
         Ok(results)
     }
@@ -501,45 +523,45 @@ impl QueryServiceImpl {
         alarm_index_name: &str,
         start_time: DateTime<Utc>,
         end_time: DateTime<Utc>,
-    ) -> anyhow::Result<()> {
-        
+    ) -> anyhow::Result<AlarmReportInfos> {
         let search_query: Value = json!({
-            "size": 0,
-            "track_total_hits": false,
-            "query": {
-                "range": {
-                    "timestamp": {
-                        "gte": convert_date_to_str(start_time, Utc),
-                        "lte": convert_date_to_str(end_time, Utc)
+        "size": 0,
+        "track_total_hits": false,
+        "query": {
+            "range": {
+                "timestamp": {
+                    "gte": convert_date_to_str(start_time, Utc),
+                    "lte": convert_date_to_str(end_time, Utc)
+                }
+            }
+        },
+        "aggs": {
+            "by_index_name": {
+                "terms": {
+                        "field": "index_name.keyword",
+                        "size": 10000
+                    }
+                },
+                "distinct_index_name_count": {
+                    "cardinality": {
+                        "field": "index_name.keyword"
                     }
                 }
-            },
-            "aggs": {
-                "by_index_name": {
-                    "terms": {
-                            "field": "index_name.keyword",
-                            "size": 10000
-                        }
-                    },
-                    "distinct_index_name_count": {
-                        "cardinality": {
-                            "field": "index_name.keyword"
-                        }
-                    }
-                }
-            });
-        
+            }
+        });
+
         let response_body: Value = self
             .es_conn
             .get_search_query(&search_query, alarm_index_name)
             .await?;
-        
+
         let buckets: Vec<IndexNameCount> =
             self.get_aggregation_result_vec(&response_body, "by_index_name")?;
 
-        let distinct_count_u64: u64 = self.get_aggregation_metric_value::<u64>(&response_body, "")?;
+        let distinct_count_u64: u64 =
+            self.get_aggregation_metric_value::<u64>(&response_body, "distinct_index_name_count")?;
 
-        Ok(())
+        Ok(AlarmReportInfos::new(buckets, distinct_count_u64))
     }
 }
 
@@ -812,16 +834,18 @@ impl QueryService for QueryServiceImpl {
 
         Ok(results)
     }
-    
+
     #[doc = ""]
-    async fn get_index_name_aggregations(&self,
+    async fn get_index_name_aggregations(
+        &self,
         alarm_index_name: &str,
         start_time: DateTime<Utc>,
         end_time: DateTime<Utc>,
-    ) -> anyhow::Result<()> {
-        
-        
+    ) -> anyhow::Result<AlarmReportInfos> {
+        let alarm_report_infos: AlarmReportInfos = self
+            .get_distinct_index_name_counts(alarm_index_name, start_time, end_time)
+            .await?;
 
-        Ok(())
+        Ok(alarm_report_infos)
     }
 }

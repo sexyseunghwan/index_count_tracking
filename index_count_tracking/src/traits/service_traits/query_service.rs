@@ -2,9 +2,12 @@ use crate::common::*;
 
 use crate::model::index::{alert_index::*, index_config::*};
 
-use crate::model::alarm::alarm_log_history_index::*;
-
-use crate::dto::{index_count_agg_result::*, log_index_result::*, index_name_count::*};
+use crate::dto::{
+    alarm::{alarm_log_history_index::*, alarm_report_infos::*},
+    index_count_agg_result::*,
+    index_name_count::*,
+    log_index_result::*,
+};
 
 #[async_trait]
 pub trait QueryService {
@@ -50,10 +53,11 @@ pub trait QueryService {
         start_time: DateTime<Utc>,
         end_time: DateTime<Utc>,
     ) -> anyhow::Result<Vec<IndexCountAggResult>>;
-    async fn get_index_name_aggregations(&self,
+    async fn get_index_name_aggregations(
+        &self,
         alarm_index_name: &str,
         start_time: DateTime<Utc>,
         end_time: DateTime<Utc>,
-    ) -> anyhow::Result<()>;
+    ) -> anyhow::Result<AlarmReportInfos>;
     //) -> anyhow::Result<IndexNameCount>;
 }

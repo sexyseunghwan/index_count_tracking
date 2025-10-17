@@ -90,7 +90,7 @@ where
 
         Ok(())
     }
-    
+
     #[doc = "모니터링 태스크를 별도의 tokio task로 spawn"]
     fn spawn_tracking_monitor_task(
         service: Arc<T>,
@@ -127,7 +127,12 @@ where
 
         tokio::spawn(async move {
             match service
-                .report_loop(&mon_index_name, &alarm_index_name, &target_index_info_list, report_type)
+                .report_loop(
+                    &mon_index_name,
+                    &alarm_index_name,
+                    &target_index_info_list,
+                    report_type,
+                )
                 .await
             {
                 Ok(_) => info!("[{}] Completed successfully", task_name),

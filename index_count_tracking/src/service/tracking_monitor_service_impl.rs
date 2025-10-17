@@ -5,10 +5,9 @@ use crate::traits::service_traits::{
 };
 
 use crate::model::configs::total_config::*;
-
-use crate::model::alarm::alarm_log_history_index::*;
 use crate::model::index::{alert_index::*, index_list_config::*};
 
+use crate::dto::alarm::alarm_log_history_index::*;
 use crate::dto::log_index_result::*;
 
 use crate::utils_modules::time_utils::*;
