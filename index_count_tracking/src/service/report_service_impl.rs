@@ -28,7 +28,7 @@ where
     C: ChartService,
     N: NotificationService,
 {
-    #[doc = ""]
+    #[doc = "Function that organizes index change information into a report format and then sends a notification to the administrator."]
     async fn report_index_cnt_task(
         &self,
         mon_index_name: &str,
@@ -208,34 +208,37 @@ where
         for index in index_list {
             let index_name: &str = index.index_name();
 
-            let filtered_start_cnt: usize = match start_time_all_index_info
-                .iter()
-                .find(|item| item.index_name == index_name)
-            {
-                Some(item) => item.cnt,
-                None => {
-                    error!(
-                        "Index not found in start_time_all_index_info: {}",
-                        index_name
-                    );
-                    continue;
-                }
-            };
 
-            let filtered_end_cnt: usize = match end_time_all_index_info
-                .iter()
-                .find(|item| item.index_name == index_name)
-            {
-                Some(item) => item.cnt,
-                None => {
-                    error!("Index not found in end_time_all_index_info: {}", index_name);
-                    continue;
-                }
-            };
+            // 시작-종료 변동량/률 에서 최고 변동량/률로 바꿀 것
+            // let filtered_start_cnt: usize = match start_time_all_index_info
+            //     .iter()
+            //     .find(|item| item.index_name == index_name)
+            // {
+            //     Some(item) => item.cnt,
+            //     None => {
+            //         error!(
+            //             "Index not found in start_time_all_index_info: {}",
+            //             index_name
+            //         );
+            //         continue;
+            //     }
+            // };
 
-            let difference: usize = filtered_start_cnt.abs_diff(filtered_end_cnt);
-            let difference_percent: f64 = (difference as f64 / filtered_start_cnt as f64) * 100.0;
-            let difference_percent_rounded: f64 = (difference_percent * 100.0).round() / 100.0;
+            // let filtered_end_cnt: usize = match end_time_all_index_info
+            //     .iter()
+            //     .find(|item| item.index_name == index_name)
+            // {
+            //     Some(item) => item.cnt,
+            //     None => {
+            //         error!("Index not found in end_time_all_index_info: {}", index_name);
+            //         continue;
+            //     }
+            // };
+
+            // let difference: usize = filtered_start_cnt.abs_diff(filtered_end_cnt);
+            // let difference_percent: f64 = (difference as f64 / filtered_start_cnt as f64) * 100.0;
+            // let difference_percent_rounded: f64 = (difference_percent * 100.0).round() / 100.0;
+
 
             let filtered_alarm_cnt: u64 = match alarm_report_infos
                 .buckets()
@@ -314,8 +317,8 @@ where
             .replace("{{CHANGE_STYLE}}", "")
             .replace("{{INDICES_WITH_ALERTS}}", &alaram_index_cnt.to_string())
             .replace("{{TOTAL_ALERTS}}", &total_alarm_cnt.to_string())
-            .replace("{{INDEX_ROWS}}", &self.generate_index_rows(&alarm_index_details)); // 여기가 공고 상세쪽이다.
-
+            .replace("{{INDEX_ROWS}}", &self.generate_index_rows(&alarm_index_details));// detail informations of index
+            
         Ok(html_content)
     }
 

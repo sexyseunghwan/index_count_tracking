@@ -5,6 +5,7 @@ use crate::common::*;
 pub struct AlertIndex {
     pub index_name: String,
     pub cnt: usize,
+    #[serde(default)] 
     pub prev_cnt: usize,
     pub timestamp: String,
 }

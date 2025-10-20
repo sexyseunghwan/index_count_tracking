@@ -564,13 +564,11 @@ impl QueryServiceImpl {
         Ok(AlarmReportInfos::new(buckets, distinct_count_u64))
     }
 
-    #[doc = ""]
+    #[doc = "Function that returns the most recent index tracking information."]
     async fn get_latest_index_info(&self, 
         mon_index_name: &str,
         param_index_name: &str,
-        start_time: DateTime<Utc>,
-        end_time: DateTime<Utc>
-    ) -> anyhow::Result<()> {
+    ) -> anyhow::Result<AlertIndex> {
 
         let search_query: Value = json!({
             "size": 1,
@@ -578,15 +576,7 @@ impl QueryServiceImpl {
             "query": {
                 "bool": {
                     "filter": [
-                        { "term": { "index_name.keyword": param_index_name }}, 
-                        {
-                            "range": {
-                                "timestamp": {
-                                    "gte": convert_date_to_str(start_time, Utc),
-                                    "lte": convert_date_to_str(end_time, Utc)
-                                }
-                            }
-                        }
+                        { "term": { "index_name.keyword": param_index_name }}
                     ]
                 }  
             },
@@ -594,8 +584,25 @@ impl QueryServiceImpl {
                 { "timestamp": "desc" }
             ]
         });
+        
+        let response_body: Value = self
+            .es_conn
+            .get_search_query(&search_query, mon_index_name)
+            .await?;
 
+        let result: AlertIndexFormat = self.get_query_result::<AlertIndexFormat, AlertIndex>(&response_body)?;
+        
+        Ok(result.alert_index)
+    }
 
+    async fn get_max_prev_count_in_range(
+        &self,
+        mon_index_name: &str,
+        param_index_name: &str,
+        start_time: DateTime<Utc>,
+        end_time: DateTime<Utc>
+    ) -> anyhow::Result<()> {
+        
 
         Ok(())
     }
@@ -886,16 +893,24 @@ impl QueryService for QueryServiceImpl {
         Ok(alarm_report_infos)
     }
 
-    #[doc = ""]
-    async fn get_latest_index_count(
+    #[doc = "Function that returns the most recent index tracking information"]
+    async fn get_latest_index_count_infos(
+        &self,
+        mon_index_name: &str,
+        param_index_name: &str,
+    ) -> anyhow::Result<AlertIndex> {
+        let latest_index_info: AlertIndex = self.get_latest_index_info(mon_index_name, param_index_name).await?;
+
+        Ok(latest_index_info)
+    }
+
+    async fn get_max_prev_count_in_range(
         &self,
         mon_index_name: &str,
         param_index_name: &str,
         start_time: DateTime<Utc>,
         end_time: DateTime<Utc>
     ) -> anyhow::Result<()> {
-
-
 
 
         Ok(())

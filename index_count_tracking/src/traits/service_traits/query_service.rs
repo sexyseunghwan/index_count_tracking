@@ -53,13 +53,17 @@ pub trait QueryService {
         start_time: DateTime<Utc>,
         end_time: DateTime<Utc>,
     ) -> anyhow::Result<AlarmReportInfos>;
-    async fn get_latest_index_count(
+    async fn get_latest_index_count_infos(
+        &self,
+        mon_index_name: &str,
+        param_index_name: &str
+    ) -> anyhow::Result<AlertIndex>;
+    async fn get_max_prev_count_in_range(
         &self,
         mon_index_name: &str,
         param_index_name: &str,
         start_time: DateTime<Utc>,
         end_time: DateTime<Utc>
     ) -> anyhow::Result<()>;
-    //) -> anyhow::Result<AlertIndex>;
     
 }

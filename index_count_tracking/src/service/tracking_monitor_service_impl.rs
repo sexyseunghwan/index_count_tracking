@@ -43,21 +43,28 @@ where
             {
                 Ok(doc_cnt) => doc_cnt,
                 Err(e) => {
-                    error!("{:?}", e);
+                    error!("[TrackingServiceImpl->save_index_cnt_infos]{:?}", e);
                     continue;
                 }
             };
 
-            /* 이전 인덱스의 문서 개수를 색인해준다. -> 추후의 변동률을 계산하기 편하기 위함 */
-            let prev_doc_cnt
+            /* 이전 시각의 인덱스의 문서 개수를 색인해준다. -> 추후의 변동률을 계산하기 편하기 위함 */
+            let prev_doc_cnt: AlertIndex = match self.mon_query_service.get_latest_index_count_infos(mon_index_name, index_name).await {
+                Ok(prev_doc_cnt) => prev_doc_cnt,
+                Err(e) => {
+                    error!("[TrackingServiceImpl->save_index_cnt_infosn]{:?}", e);
+                    continue;
+                }
+            };
 
             /* 모니터링 인덱스에 해당 인덱스의 문서수를 색인 */
             let alert_index: AlertIndex = AlertIndex::new(
                 index_name.to_string(),
                 doc_cnt,
+                prev_doc_cnt.cnt,
                 convert_date_to_str(cur_utc_time, Utc),
             );
-
+            
             /* 해당 정보를 모니터링 클러스터에 색인 */
             self.mon_query_service
                 .post_log_index(mon_index_name, &alert_index)
