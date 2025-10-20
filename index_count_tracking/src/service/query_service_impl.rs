@@ -563,6 +563,43 @@ impl QueryServiceImpl {
 
         Ok(AlarmReportInfos::new(buckets, distinct_count_u64))
     }
+
+    #[doc = ""]
+    async fn get_latest_index_info(&self, 
+        mon_index_name: &str,
+        param_index_name: &str,
+        start_time: DateTime<Utc>,
+        end_time: DateTime<Utc>
+    ) -> anyhow::Result<()> {
+
+        let search_query: Value = json!({
+            "size": 1,
+            "track_total_hits": false,
+            "query": {
+                "bool": {
+                    "filter": [
+                        { "term": { "index_name.keyword": param_index_name }}, 
+                        {
+                            "range": {
+                                "timestamp": {
+                                    "gte": convert_date_to_str(start_time, Utc),
+                                    "lte": convert_date_to_str(end_time, Utc)
+                                }
+                            }
+                        }
+                    ]
+                }  
+            },
+            "sort": [
+                { "timestamp": "desc" }
+            ]
+        });
+
+
+
+        Ok(())
+    }
+
 }
 
 #[async_trait]
@@ -847,5 +884,20 @@ impl QueryService for QueryServiceImpl {
             .await?;
 
         Ok(alarm_report_infos)
+    }
+
+    #[doc = ""]
+    async fn get_latest_index_count(
+        &self,
+        mon_index_name: &str,
+        param_index_name: &str,
+        start_time: DateTime<Utc>,
+        end_time: DateTime<Utc>
+    ) -> anyhow::Result<()> {
+
+
+
+
+        Ok(())
     }
 }

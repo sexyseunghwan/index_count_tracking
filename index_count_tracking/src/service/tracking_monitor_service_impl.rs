@@ -48,6 +48,9 @@ where
                 }
             };
 
+            /* 이전 인덱스의 문서 개수를 색인해준다. -> 추후의 변동률을 계산하기 편하기 위함 */
+            let prev_doc_cnt
+
             /* 모니터링 인덱스에 해당 인덱스의 문서수를 색인 */
             let alert_index: AlertIndex = AlertIndex::new(
                 index_name.to_string(),

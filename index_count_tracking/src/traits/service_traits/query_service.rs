@@ -35,12 +35,6 @@ pub trait QueryService {
         index_name: &str,
         alarm_history_index: AlarmLogHistoryIndex,
     ) -> anyhow::Result<()>;
-    //anyhow::Result<Vec<AlertIndex>>;
-    // async fn execute_search_query(
-    //     &self,
-    //     index_name: &str,
-    //     query: &serde_json::Value,
-    // ) -> anyhow::Result<serde_json::Value>;
     async fn get_start_time_all_indicies_count(
         &self,
         mon_index_name: &str,
@@ -59,5 +53,13 @@ pub trait QueryService {
         start_time: DateTime<Utc>,
         end_time: DateTime<Utc>,
     ) -> anyhow::Result<AlarmReportInfos>;
-    //) -> anyhow::Result<IndexNameCount>;
+    async fn get_latest_index_count(
+        &self,
+        mon_index_name: &str,
+        param_index_name: &str,
+        start_time: DateTime<Utc>,
+        end_time: DateTime<Utc>
+    ) -> anyhow::Result<()>;
+    //) -> anyhow::Result<AlertIndex>;
+    
 }

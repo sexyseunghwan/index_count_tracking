@@ -8,8 +8,8 @@ pub struct AlarmIndexDetailInfo {
     pub index_name: String,
     pub start_index_cnt: usize,
     pub end_index_cnt: usize,
-    pub difference: u64,
+    pub difference: usize,
     pub difference_percent: f64,
     pub alarm_cnt: u64,
-    pub status: IndexStatus
+    pub status: IndexStatus,
 }
