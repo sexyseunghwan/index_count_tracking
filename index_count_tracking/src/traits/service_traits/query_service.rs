@@ -56,14 +56,13 @@ pub trait QueryService {
     async fn get_latest_index_count_infos(
         &self,
         mon_index_name: &str,
-        param_index_name: &str
+        param_index_name: &str,
     ) -> anyhow::Result<AlertIndex>;
-    async fn get_max_prev_count_in_range(
+    async fn fetch_max_doc_count_variation(
         &self,
         mon_index_name: &str,
-        param_index_name: &str,
+        index_name: &str,
         start_time: DateTime<Utc>,
-        end_time: DateTime<Utc>
-    ) -> anyhow::Result<()>;
-    
+        end_time: DateTime<Utc>,
+    ) -> anyhow::Result<AlertIndex>;
 }

@@ -1,3 +1,5 @@
+use chrono_tz::Etc::UTC;
+
 use crate::common::*;
 
 use crate::dto::alarm::alarm_report_infos::AlarmReportInfos;
@@ -395,25 +397,6 @@ impl QueryServiceImpl {
         if avg > 0.0 { (diff / avg) * 100.0 } else { 0.0 }
     }
 
-    // #[doc = r#"
-    //     지정된 시간 범위 내에서 특정 인덱스의 알람 데이터를 조회하여 AlertIndexFormat 벡터로 반환한다.
-
-    //     1. 시간 범위(`gte` ~ `lte`)와 인덱스명으로 필터링된 검색 쿼리 생성
-    //     2. `timestamp` 필드 기준으로 내림차순 정렬하여 최신 데이터부터 조회
-    //     3. 조회된 결과를 `AlertIndex`에서 `AlertIndexFormat`으로 변환
-    //     4. `get_query_result_vec` 헬퍼를 통해 ES 응답을 구조화된 객체로 파싱
-
-    //     # Arguments
-    //     * `mon_index_name` - 모니터링 데이터가 저장된 인덱스명
-    //     * `index_name` - 대상 인덱스명
-    //     * `prev_timestamp_utc` - 조회 시작 시간 (UTC)
-    //     * `cur_timestamp_utc` - 조회 종료 시간 (UTC)
-
-    //     # Returns
-    //     * `Vec<AlertIndexFormat>` - 시간순으로 정렬된 알람 데이터 목록
-    //     * `anyhow::Error` - ES 조회 실패 또는 파싱 실패 시
-    // "#]
-
     #[doc = ""]
     async fn fetch_index_cnt_infos<'a>(
         &self,
@@ -516,97 +499,6 @@ impl QueryServiceImpl {
 
         Ok(results)
     }
-
-    #[doc = ""]
-    async fn get_distinct_index_name_counts(
-        &self,
-        alarm_index_name: &str,
-        start_time: DateTime<Utc>,
-        end_time: DateTime<Utc>,
-    ) -> anyhow::Result<AlarmReportInfos> {
-        let search_query: Value = json!({
-        "size": 0,
-        "track_total_hits": false,
-        "query": {
-            "range": {
-                "timestamp": {
-                    "gte": convert_date_to_str(start_time, Utc),
-                    "lte": convert_date_to_str(end_time, Utc)
-                }
-            }
-        },
-        "aggs": {
-            "by_index_name": {
-                "terms": {
-                        "field": "index_name.keyword",
-                        "size": 10000
-                    }
-                },
-                "distinct_index_name_count": {
-                    "cardinality": {
-                        "field": "index_name.keyword"
-                    }
-                }
-            }
-        });
-
-        let response_body: Value = self
-            .es_conn
-            .get_search_query(&search_query, alarm_index_name)
-            .await?;
-
-        let buckets: Vec<IndexNameCount> =
-            self.get_aggregation_result_vec(&response_body, "by_index_name")?;
-
-        let distinct_count_u64: u64 =
-            self.get_aggregation_metric_value::<u64>(&response_body, "distinct_index_name_count")?;
-
-        Ok(AlarmReportInfos::new(buckets, distinct_count_u64))
-    }
-
-    #[doc = "Function that returns the most recent index tracking information."]
-    async fn get_latest_index_info(&self, 
-        mon_index_name: &str,
-        param_index_name: &str,
-    ) -> anyhow::Result<AlertIndex> {
-
-        let search_query: Value = json!({
-            "size": 1,
-            "track_total_hits": false,
-            "query": {
-                "bool": {
-                    "filter": [
-                        { "term": { "index_name.keyword": param_index_name }}
-                    ]
-                }  
-            },
-            "sort": [
-                { "timestamp": "desc" }
-            ]
-        });
-        
-        let response_body: Value = self
-            .es_conn
-            .get_search_query(&search_query, mon_index_name)
-            .await?;
-
-        let result: AlertIndexFormat = self.get_query_result::<AlertIndexFormat, AlertIndex>(&response_body)?;
-        
-        Ok(result.alert_index)
-    }
-
-    async fn get_max_prev_count_in_range(
-        &self,
-        mon_index_name: &str,
-        param_index_name: &str,
-        start_time: DateTime<Utc>,
-        end_time: DateTime<Utc>
-    ) -> anyhow::Result<()> {
-        
-
-        Ok(())
-    }
-
 }
 
 #[async_trait]
@@ -808,7 +700,7 @@ impl QueryService for QueryServiceImpl {
             )
             .await?;
 
-        /***** !! 중요 - 한국시간으로 변환해서 저장해준다.!! ******/
+        /***** !![important] Converts UTC time to Korean time and saves it. !! ******/
         let report_indexes: Vec<AlertIndex> = alert_index_formats
             .into_iter()
             .map(|x| {
@@ -879,40 +771,130 @@ impl QueryService for QueryServiceImpl {
         Ok(results)
     }
 
-    #[doc = ""]
+    #[doc = "Function that aggregation the document count per index and returns the total number of distinct indices."]
     async fn get_index_name_aggregations(
         &self,
         alarm_index_name: &str,
         start_time: DateTime<Utc>,
         end_time: DateTime<Utc>,
     ) -> anyhow::Result<AlarmReportInfos> {
-        let alarm_report_infos: AlarmReportInfos = self
-            .get_distinct_index_name_counts(alarm_index_name, start_time, end_time)
+        let search_query: Value = json!({
+        "size": 0,
+        "track_total_hits": false,
+        "query": {
+            "range": {
+                "timestamp": {
+                    "gte": convert_date_to_str(start_time, Utc),
+                    "lte": convert_date_to_str(end_time, Utc)
+                }
+            }
+        },
+        "aggs": {
+            "by_index_name": {
+                "terms": {
+                        "field": "index_name.keyword",
+                        "size": 10000
+                    }
+                },
+                "distinct_index_name_count": {
+                    "cardinality": {
+                        "field": "index_name.keyword"
+                    }
+                }
+            }
+        });
+
+        let response_body: Value = self
+            .es_conn
+            .get_search_query(&search_query, alarm_index_name)
             .await?;
 
-        Ok(alarm_report_infos)
+        let buckets: Vec<IndexNameCount> =
+            self.get_aggregation_result_vec(&response_body, "by_index_name")?;
+
+        let distinct_count_u64: u64 =
+            self.get_aggregation_metric_value::<u64>(&response_body, "distinct_index_name_count")?;
+
+        Ok(AlarmReportInfos::new(buckets, distinct_count_u64))
     }
 
-    #[doc = "Function that returns the most recent index tracking information"]
+    #[doc = "Function that returns the most recent index tracking information."]
     async fn get_latest_index_count_infos(
         &self,
         mon_index_name: &str,
         param_index_name: &str,
     ) -> anyhow::Result<AlertIndex> {
-        let latest_index_info: AlertIndex = self.get_latest_index_info(mon_index_name, param_index_name).await?;
+        let search_query: Value = json!({
+            "size": 1,
+            "track_total_hits": false,
+            "query": {
+                "bool": {
+                    "filter": [
+                        { "term": { "index_name.keyword": param_index_name }}
+                    ]
+                }
+            },
+            "sort": [
+                { "timestamp": "desc" }
+            ]
+        });
 
-        Ok(latest_index_info)
+        let response_body: Value = self
+            .es_conn
+            .get_search_query(&search_query, mon_index_name)
+            .await?;
+
+        let result: AlertIndexFormat =
+            self.get_query_result::<AlertIndexFormat, AlertIndex>(&response_body)?;
+
+        Ok(result.alert_index)
     }
 
-    async fn get_max_prev_count_in_range(
+    #[doc = "Retrieves the maximum variation in document count for a given index within a specified time period."]
+    async fn fetch_max_doc_count_variation(
         &self,
         mon_index_name: &str,
-        param_index_name: &str,
+        index_name: &str,
         start_time: DateTime<Utc>,
-        end_time: DateTime<Utc>
-    ) -> anyhow::Result<()> {
+        end_time: DateTime<Utc>,
+    ) -> anyhow::Result<AlertIndex> {
+        let search_query: Value = json!({
+            "size": 1,
+            "track_total_hits": false,
+            "query": {
+                "bool": {
+                    "must": [
+                        {
+                            "range": {
+                                "timestamp": {
+                                    "gte": convert_date_to_str(start_time, Utc),
+                                    "lte": convert_date_to_str(end_time, Utc)
+                                }
+                            }
+                        },
+                        {
+                            "term": {
+                                "index_name.keyword": index_name
+                            }
+                        }
+                    ]
+                }
+            },
+            "sort": [
+                { "cur_prev_diff": { "order": "desc"} }
+            ]
+        });
 
+        let response_body: Value = self
+            .es_conn
+            .get_search_query(&search_query, mon_index_name)
+            .await?;
 
-        Ok(())
+        let alert_index_format: AlertIndexFormat =
+            self.get_query_result::<AlertIndexFormat, AlertIndex>(&response_body)?;
+
+        let alert_index: AlertIndex = alert_index_format.alert_index;
+
+        Ok(alert_index)
     }
 }

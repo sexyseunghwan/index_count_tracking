@@ -71,6 +71,24 @@
             </tbody>
         </table>
 
+        <h2 style="color: #555; margin-top: 30px; margin-bottom: 15px;">📋 인덱스별 상세 정보 - 최대 변동 정보</h2>
+        <table style="border-collapse: collapse; width: 100%; margin-top: 15px;">
+            <thead>
+                <tr>
+                    <th style="border: 1px solid #ddd; padding: 12px; text-align: left; background-color: #007bff; color: white; font-weight: bold;">인덱스명</th>
+                    <th style="border: 1px solid #ddd; padding: 12px; text-align: left; background-color: #007bff; color: white; font-weight: bold;">시작 문서 수</th>
+                    <th style="border: 1px solid #ddd; padding: 12px; text-align: left; background-color: #007bff; color: white; font-weight: bold;">종료 문서 수</th>
+                    <th style="border: 1px solid #ddd; padding: 12px; text-align: left; background-color: #007bff; color: white; font-weight: bold;">변동량</th>
+                    <th style="border: 1px solid #ddd; padding: 12px; text-align: left; background-color: #007bff; color: white; font-weight: bold;">변동률(%)</th>
+                    <th style="border: 1px solid #ddd; padding: 12px; text-align: left; background-color: #007bff; color: white; font-weight: bold;">변동 시점</th>
+                </tr>
+            </thead>
+            <tbody>
+                {{INDEX_DIFF_ROWS}}
+            </tbody>
+        </table>
+
+
         <h2 style="color: #555; margin-top: 30px; margin-bottom: 15px;">📈 인덱스 카운트 추이 그래프 (최근 10일)</h2>
 
         <div style="background-color: #f8f9fa; padding: 15px; border-radius: 8px; margin-bottom: 20px;">

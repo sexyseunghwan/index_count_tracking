@@ -1,3 +1,5 @@
+use chrono_tz::Etc::UTC;
+
 use crate::common::*;
 
 use crate::traits::service_traits::{
@@ -35,7 +37,7 @@ where
         for index_config in index_list.index() {
             let index_name: &str = index_config.index_name();
 
-            /* 해당 인덱스의 문서 개수 */
+            /* Number of indexed documents. */
             let doc_cnt: usize = match self
                 .target_query_service
                 .get_index_doc_count(index_config.index_name())
@@ -48,23 +50,36 @@ where
                 }
             };
 
-            /* 이전 시각의 인덱스의 문서 개수를 색인해준다. -> 추후의 변동률을 계산하기 편하기 위함 */
-            let prev_doc_cnt: AlertIndex = match self.mon_query_service.get_latest_index_count_infos(mon_index_name, index_name).await {
+            /* Indexes the previous document count to simplify future change-rate cacluations. */
+            let prev_doc_cnt: AlertIndex = match self
+                .mon_query_service
+                .get_latest_index_count_infos(mon_index_name, index_name)
+                .await
+            {
                 Ok(prev_doc_cnt) => prev_doc_cnt,
                 Err(e) => {
-                    error!("[TrackingServiceImpl->save_index_cnt_infosn]{:?}", e);
-                    continue;
+                    error!("[TrackingServiceImpl->save_index_cnt_infos]{:?}", e);
+                    AlertIndex::new(
+                        index_name.to_string(),
+                        0,
+                        0,
+                        0,
+                        convert_date_to_str(cur_utc_time, UTC),
+                    )
                 }
             };
+
+            let cur_prev_diff: usize = doc_cnt.abs_diff(prev_doc_cnt.cnt);
 
             /* 모니터링 인덱스에 해당 인덱스의 문서수를 색인 */
             let alert_index: AlertIndex = AlertIndex::new(
                 index_name.to_string(),
                 doc_cnt,
                 prev_doc_cnt.cnt,
+                cur_prev_diff,
                 convert_date_to_str(cur_utc_time, Utc),
             );
-            
+
             /* 해당 정보를 모니터링 클러스터에 색인 */
             self.mon_query_service
                 .post_log_index(mon_index_name, &alert_index)

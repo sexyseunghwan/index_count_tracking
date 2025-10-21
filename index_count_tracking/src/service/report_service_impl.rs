@@ -9,7 +9,7 @@ use crate::utils_modules::time_utils::*;
 use crate::model::{configs::total_config::*, index::alert_index::*, report::report_config::*};
 
 use crate::dto::{
-    alarm::{alarm_index_detail_info::*, alarm_report_infos::*},
+    alarm::{alarm_index_detail_info::*, alarm_index_diff_detail_infos::*, alarm_report_infos::*},
     index_count_agg_result::*,
 };
 
@@ -45,9 +45,8 @@ where
         let utc_from_local: DateTime<Utc> = convert_utc_from_local(local_time);
         let prev_hour_utc_time: DateTime<Utc> = minus_h(utc_from_local, hour);
 
-        /* 그래프를 가져오기 위함 */
         for index in target_index_info_list.index() {
-            /* 1. 그래프 생성 */
+            /* Gecerate Report graph ,*/
             let graph_path: PathBuf = match self
                 .generate_index_history_graph(
                     mon_index_name,
@@ -70,13 +69,13 @@ where
             img_paths.push(graph_path);
         }
 
-        /* Report HTML 생성 */
+        /* Generate Report HTML */
         let email_subject: String = format!(
             "[Elasticsearch] Index Report - {}",
             convert_date_to_str(local_time, Local)
         );
 
-        /* 시작 시점 총 문서 정보*/
+        /* Total document information at start time. */
         let start_time_all_index_info: Vec<IndexCountAggResult> = self
             .query_service
             .get_start_time_all_indicies_count(mon_index_name, prev_hour_utc_time, utc_from_local)
@@ -85,7 +84,7 @@ where
         let start_time_all_index_cnt: usize =
             start_time_all_index_info.iter().map(|x| x.cnt()).sum();
 
-        /* 종료 시점 총 문서 정보 */
+        /* Total document information at end time. */
         let end_time_all_index_info: Vec<IndexCountAggResult> = self
             .query_service
             .get_start_time_all_indicies_count(mon_index_name, prev_hour_utc_time, utc_from_local)
@@ -108,13 +107,23 @@ where
         /* 총 알람 수 */
         let total_alarm_cnt: u64 = alarm_report_infos.buckets().iter().map(|x| x.count).sum();
 
-        /* 알람인덱스 상세 정보 */
+        /* Detailed information by index */
         let alarm_index_details: Vec<AlarmIndexDetailInfo> = self.generate_alarm_index_details(
             target_index_info_list.index(),
-            &start_time_all_index_info,
-            &end_time_all_index_info,
             alarm_report_infos,
+            start_time_all_index_info,
+            end_time_all_index_info,
         );
+
+        /* Detailed information by index - Maximum change information */
+        let alarm_index_diff_detilas: Vec<AlarmIndexDiffDetailInfo> = self
+            .generate_alram_index_diff_details(
+                target_index_info_list.index(),
+                mon_index_name,
+                prev_hour_utc_time,
+                utc_from_local,
+            )
+            .await?;
 
         let html_content: String = self.generate_daily_report_html(
             target_index_info_list,
@@ -125,7 +134,8 @@ where
             total_difference,
             alaram_index_cnt,
             total_alarm_cnt,
-            alarm_index_details
+            alarm_index_details,
+            alarm_index_diff_detilas,
         )?;
 
         /* 이메일로 리포트를 보내줌 */
@@ -163,7 +173,7 @@ where
 
         let output_path: PathBuf =
             PathBuf::from(format!("./pics/{}_line_chart_{}.png", hour, index_name));
-        
+
         self.chart_service
             .generate_line_chart(
                 &format!(
@@ -199,46 +209,43 @@ where
     fn generate_alarm_index_details(
         &self,
         index_list: &Vec<IndexConfig>,
-        start_time_all_index_info: &Vec<IndexCountAggResult>,
-        end_time_all_index_info: &Vec<IndexCountAggResult>,
         alarm_report_infos: AlarmReportInfos,
+        start_time_all_index_info: Vec<IndexCountAggResult>,
+        end_time_all_index_info: Vec<IndexCountAggResult>,
     ) -> Vec<AlarmIndexDetailInfo> {
         let mut alarm_index_details: Vec<AlarmIndexDetailInfo> = Vec::new();
 
         for index in index_list {
             let index_name: &str = index.index_name();
 
+            let filtered_start_cnt: usize = match start_time_all_index_info
+                .iter()
+                .find(|item| item.index_name == index_name)
+            {
+                Some(item) => item.cnt,
+                None => {
+                    error!(
+                        "Index not found in start_time_all_index_info: {}",
+                        index_name
+                    );
+                    continue;
+                }
+            };
 
-            // 시작-종료 변동량/률 에서 최고 변동량/률로 바꿀 것
-            // let filtered_start_cnt: usize = match start_time_all_index_info
-            //     .iter()
-            //     .find(|item| item.index_name == index_name)
-            // {
-            //     Some(item) => item.cnt,
-            //     None => {
-            //         error!(
-            //             "Index not found in start_time_all_index_info: {}",
-            //             index_name
-            //         );
-            //         continue;
-            //     }
-            // };
+            let filtered_end_cnt: usize = match end_time_all_index_info
+                .iter()
+                .find(|item| item.index_name == index_name)
+            {
+                Some(item) => item.cnt,
+                None => {
+                    error!("Index not found in end_time_all_index_info: {}", index_name);
+                    continue;
+                }
+            };
 
-            // let filtered_end_cnt: usize = match end_time_all_index_info
-            //     .iter()
-            //     .find(|item| item.index_name == index_name)
-            // {
-            //     Some(item) => item.cnt,
-            //     None => {
-            //         error!("Index not found in end_time_all_index_info: {}", index_name);
-            //         continue;
-            //     }
-            // };
-
-            // let difference: usize = filtered_start_cnt.abs_diff(filtered_end_cnt);
-            // let difference_percent: f64 = (difference as f64 / filtered_start_cnt as f64) * 100.0;
-            // let difference_percent_rounded: f64 = (difference_percent * 100.0).round() / 100.0;
-
+            let difference: usize = filtered_start_cnt.abs_diff(filtered_end_cnt);
+            let difference_percent: f64 = (difference as f64 / filtered_start_cnt as f64) * 100.0;
+            let difference_percent_rounded: f64 = (difference_percent * 100.0).round() / 100.0;
 
             let filtered_alarm_cnt: u64 = match alarm_report_infos
                 .buckets()
@@ -269,9 +276,55 @@ where
             );
 
             alarm_index_details.push(alarm_index_detail);
-        } // - for
+        } //for
 
         alarm_index_details
+    }
+
+    #[doc = ""]
+    async fn generate_alram_index_diff_details(
+        &self,
+        index_list: &Vec<IndexConfig>,
+        mon_index_name: &str,
+        start_time: DateTime<Utc>,
+        end_time: DateTime<Utc>,
+    ) -> anyhow::Result<Vec<AlarmIndexDiffDetailInfo>> {
+        let mut alarm_index_diff_details: Vec<AlarmIndexDiffDetailInfo> = Vec::new();
+
+        for index in index_list {
+            let index_name: &str = index.index_name();
+            
+            /* Retrieve the maximum document count variation within a specific period */
+            let alert_index: AlertIndex = self
+                .query_service
+                .fetch_max_doc_count_variation(mon_index_name, index_name, start_time, end_time)
+                .await?;
+            
+            let difference: usize = alert_index.cur_prev_diff;
+            let divisor: usize = if alert_index.prev_cnt == 0 { 1 } else { alert_index.prev_cnt }; // Defense code to prevent division by 0.
+            let difference_percent: f64 = (difference as f64 / divisor as f64) * 100.0;
+            let difference_percent_rounded: f64 = (difference_percent * 100.0).round() / 100.0;
+
+            let utc_time: DateTime<Utc> = convert_utc_from_str(&alert_index.timestamp)?;
+            let convert_kor_time: DateTime<Local> = convert_local_from_utc(utc_time);
+            
+            /*  ***WARN*** 
+                Timestamp must be stored in Korea time, Not UTC time. 
+                ***WARN***
+            */
+            let alarm_index_diff_info: AlarmIndexDiffDetailInfo = AlarmIndexDiffDetailInfo::new(
+                index_name.to_string(),
+                alert_index.prev_cnt,
+                alert_index.cnt,
+                difference,
+                difference_percent_rounded,
+                convert_date_to_str(convert_kor_time, Local),
+            );
+            
+            alarm_index_diff_details.push(alarm_index_diff_info);
+        }
+        
+        Ok(alarm_index_diff_details)
     }
 
     #[doc = "일일 리포트용 HTML 생성 (템플릿 기반)"]
@@ -285,7 +338,8 @@ where
         total_difference: usize,
         alaram_index_cnt: u64,
         total_alarm_cnt: u64,
-        alarm_index_details: Vec<AlarmIndexDetailInfo>
+        alarm_index_details: Vec<AlarmIndexDetailInfo>,
+        alarm_index_diff_details: Vec<AlarmIndexDiffDetailInfo>,
     ) -> anyhow::Result<String> {
         /* HTML 템플릿 파일 읽기 */
         let template_content: String =
@@ -317,25 +371,34 @@ where
             .replace("{{CHANGE_STYLE}}", "")
             .replace("{{INDICES_WITH_ALERTS}}", &alaram_index_cnt.to_string())
             .replace("{{TOTAL_ALERTS}}", &total_alarm_cnt.to_string())
-            .replace("{{INDEX_ROWS}}", &self.generate_index_rows(&alarm_index_details));// detail informations of index
-            
+            .replace(
+                "{{INDEX_ROWS}}",
+                &self.generate_index_detail_rows(&alarm_index_details),
+            )
+            .replace(
+                "{{INDEX_DIFF_ROWS}}",
+                &self.generate_index_diff_detail_rows(&alarm_index_diff_details),
+            );
+
         Ok(html_content)
     }
 
     // 시작 문서 수	종료 문서 수	변동량	변동률(%)	알람 수	상태
 
     #[doc = "인덱스별 상세 정보 테이블 행 생성"]
-    fn generate_index_rows(&self, alarm_index_details: &Vec<AlarmIndexDetailInfo>) -> String {
+    fn generate_index_detail_rows(
+        &self,
+        alarm_index_details: &Vec<AlarmIndexDetailInfo>,
+    ) -> String {
         let mut rows: String = String::new();
 
         for alarm_index in alarm_index_details {
-            
             let index_status: &str = match alarm_index.status() {
                 IndexStatus::Normal => "정상",
                 IndexStatus::Abnormal => "비정상",
-                _ => "알수없음"
+                _ => "알수없음",
             };
-            
+
             rows.push_str(&format!(
                 r#"<tr>
                     <td style="border: 1px solid #ddd; padding: 12px; text-align: left; background-color: #fff;">{}</td>
@@ -353,6 +416,35 @@ where
                 alarm_index.difference_percent,
                 alarm_index.alarm_cnt,
                 index_status
+            ));
+        }
+
+        rows
+    }
+
+    #[doc = ""]
+    fn generate_index_diff_detail_rows(
+        &self,
+        alarm_index_diff_details: &Vec<AlarmIndexDiffDetailInfo>,
+    ) -> String {
+        let mut rows: String = String::new();
+
+        for alarm_diff_info in alarm_index_diff_details {
+            rows.push_str(&format!(
+                r#"<tr>
+                    <td style="border: 1px solid #ddd; padding: 12px; text-align: left; background-color: #fff;">{}</td>
+                    <td style="border: 1px solid #ddd; padding: 12px; text-align: left; background-color: #fff;">{}</td>
+                    <td style="border: 1px solid #ddd; padding: 12px; text-align: left; background-color: #fff;">{}</td>
+                    <td style="border: 1px solid #ddd; padding: 12px; text-align: left; background-color: #fff;">{}</td>
+                    <td style="border: 1px solid #ddd; padding: 12px; text-align: left; background-color: #fff;">{} %</td>
+                    <td style="border: 1px solid #ddd; padding: 12px; text-align: left; background-color: #fff;">{}</td>
+                </tr>"#,
+                alarm_diff_info.index_name(),
+                alarm_diff_info.start_index_cnt,
+                alarm_diff_info.end_index_cnt,
+                alarm_diff_info.difference,
+                alarm_diff_info.difference_percent,
+                alarm_diff_info.timestamp
             ));
         }
 
