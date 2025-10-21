@@ -17,7 +17,10 @@ use crate::utils_modules::io_utils::*;
 
 use crate::env_configuration::env_config::*;
 
-use crate::dto::log_index_result::*;
+use crate::dto::{
+    log_index_result::*,
+    alarm::alarm_image_info::*
+};
 
 #[derive(Debug, Getters)]
 #[getset(get = "pub")]
@@ -583,27 +586,22 @@ impl NotificationServiceImpl {
     "#]
     async fn convert_images_to_base64_html(
         &self,
-        chart_img_path_list: &[PathBuf],
+        alarm_image_infos: &[AlarmImageInfo],
     ) -> anyhow::Result<String> {
         use base64::{Engine as _, engine::general_purpose};
 
         let mut img_tags: String = String::new();
 
-        for img_path in chart_img_path_list {
-            let img_data: Vec<u8> = tokio::fs::read(img_path).await?;
+        for img_info in alarm_image_infos {
+            let img_data: Vec<u8> = tokio::fs::read(img_info.pic_path.clone()).await?;
             let base64_data: String = general_purpose::STANDARD.encode(&img_data);
-
-            let filename: &str = img_path
-                .file_name()
-                .and_then(|n| n.to_str())
-                .unwrap_or("chart.png");
 
             img_tags.push_str(&format!(
                 r#"<div style="margin-bottom: 20px;">
                     <h3 style="color: #555; margin-bottom: 10px;">{}</h3>
                     <img src="data:image/png;base64,{}" style="max-width: 100%; height: auto; border: 1px solid #ddd; border-radius: 5px;" />
                 </div>"#,
-                filename,
+                img_info.index_name(),
                 base64_data
             ));
         }
@@ -631,16 +629,16 @@ impl NotificationServiceImpl {
         &self,
         email_subject: &str,
         html_content: &str,
-        chart_img_path_list: &[PathBuf],
+        alarm_image_infos: &[AlarmImageInfo],
     ) -> anyhow::Result<()> {
         info!(
             "Sending daily report email with {} embedded chart images",
-            chart_img_path_list.len()
+            alarm_image_infos.len()
         );
 
         /* 이미지를 Base64로 변환 */
         let base64_images: String = self
-            .convert_images_to_base64_html(chart_img_path_list)
+            .convert_images_to_base64_html(alarm_image_infos)
             .await?;
 
         /* HTML에 이미지 삽입 */
@@ -708,7 +706,7 @@ impl NotificationService for NotificationServiceImpl {
         &self,
         email_subject: &str,
         html_content: &str,
-        chart_img_path_list: &[PathBuf],
+        chart_img_path_list: &[AlarmImageInfo],
     ) -> Result<(), anyhow::Error> {
         self.send_report_email_impl(email_subject, html_content, chart_img_path_list)
             .await

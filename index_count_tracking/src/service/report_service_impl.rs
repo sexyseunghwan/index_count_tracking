@@ -1,4 +1,5 @@
 use crate::common::*;
+use crate::dto::alarm::alarm_image_info;
 use crate::env_configuration::env_config::*;
 use crate::model::index::{index_config::*, index_list_config::*};
 use crate::traits::service_traits::{
@@ -9,7 +10,10 @@ use crate::utils_modules::time_utils::*;
 use crate::model::{configs::total_config::*, index::alert_index::*, report::report_config::*};
 
 use crate::dto::{
-    alarm::{alarm_index_detail_info::*, alarm_index_diff_detail_infos::*, alarm_report_infos::*},
+    alarm::{
+        alarm_image_info::*, alarm_index_detail_info::*, alarm_index_diff_detail_infos::*,
+        alarm_report_infos::*,
+    },
     index_count_agg_result::*,
 };
 
@@ -38,7 +42,7 @@ where
         report_type: ReportType,
     ) -> anyhow::Result<()> {
         /* 집계 이미지 경로 벡터 */
-        let mut img_paths: Vec<PathBuf> = Vec::new();
+        let mut alarm_image_infos: Vec<AlarmImageInfo> = Vec::new();
 
         let hour: i64 = get_days(report_type) * 24;
         let prev_local_time: DateTime<Local> = minus_h_local(local_time, hour);
@@ -66,7 +70,10 @@ where
                 }
             };
 
-            img_paths.push(graph_path);
+            let alarm_image_info: AlarmImageInfo =
+                AlarmImageInfo::new(index.index_name().to_string(), graph_path);
+
+            alarm_image_infos.push(alarm_image_info);
         }
 
         /* Generate Report HTML */
@@ -140,13 +147,13 @@ where
 
         /* 이메일로 리포트를 보내줌 */
         self.notification_service
-            .send_daily_report_email(&email_subject, &html_content, &img_paths)
+            .send_daily_report_email(&email_subject, &html_content, &alarm_image_infos)
             .await?;
 
         Ok(())
     }
 
-    #[doc = "Elasticsearch 에서 집계하여 그래프를 생성하고 이미지를 저장한 뒤 해당 이미지의 경로를 리턴해주는 함수"]
+    #[doc = "Function that aggregates data from Elasticsearch, generates a graph, saves it as an image, and returns the image path."]
     async fn generate_index_history_graph(
         &self,
         mon_index_name: &str,
@@ -293,23 +300,27 @@ where
 
         for index in index_list {
             let index_name: &str = index.index_name();
-            
+
             /* Retrieve the maximum document count variation within a specific period */
             let alert_index: AlertIndex = self
                 .query_service
                 .fetch_max_doc_count_variation(mon_index_name, index_name, start_time, end_time)
                 .await?;
-            
+
             let difference: usize = alert_index.cur_prev_diff;
-            let divisor: usize = if alert_index.prev_cnt == 0 { 1 } else { alert_index.prev_cnt }; // Defense code to prevent division by 0.
+            let divisor: usize = if alert_index.prev_cnt == 0 {
+                1
+            } else {
+                alert_index.prev_cnt
+            }; // Defense code to prevent division by 0.
             let difference_percent: f64 = (difference as f64 / divisor as f64) * 100.0;
             let difference_percent_rounded: f64 = (difference_percent * 100.0).round() / 100.0;
 
             let utc_time: DateTime<Utc> = convert_utc_from_str(&alert_index.timestamp)?;
             let convert_kor_time: DateTime<Local> = convert_local_from_utc(utc_time);
-            
-            /*  ***WARN*** 
-                Timestamp must be stored in Korea time, Not UTC time. 
+
+            /*  ***WARN***
+                Timestamp must be stored in Korea time, Not UTC time.
                 ***WARN***
             */
             let alarm_index_diff_info: AlarmIndexDiffDetailInfo = AlarmIndexDiffDetailInfo::new(
@@ -320,10 +331,10 @@ where
                 difference_percent_rounded,
                 convert_date_to_str(convert_kor_time, Local),
             );
-            
+
             alarm_index_diff_details.push(alarm_index_diff_info);
         }
-        
+
         Ok(alarm_index_diff_details)
     }
 
@@ -383,23 +394,19 @@ where
         Ok(html_content)
     }
 
-    // 시작 문서 수	종료 문서 수	변동량	변동률(%)	알람 수	상태
-
     #[doc = "인덱스별 상세 정보 테이블 행 생성"]
     fn generate_index_detail_rows(
         &self,
         alarm_index_details: &Vec<AlarmIndexDetailInfo>,
     ) -> String {
-        let mut rows: String = String::new();
-
-        for alarm_index in alarm_index_details {
+        self.generate_table_rows(alarm_index_details, |alarm_index| {
             let index_status: &str = match alarm_index.status() {
                 IndexStatus::Normal => "정상",
                 IndexStatus::Abnormal => "비정상",
                 _ => "알수없음",
             };
 
-            rows.push_str(&format!(
+            format!(
                 r#"<tr>
                     <td style="border: 1px solid #ddd; padding: 12px; text-align: left; background-color: #fff;">{}</td>
                     <td style="border: 1px solid #ddd; padding: 12px; text-align: left; background-color: #fff;">{}</td>
@@ -416,10 +423,8 @@ where
                 alarm_index.difference_percent,
                 alarm_index.alarm_cnt,
                 index_status
-            ));
-        }
-
-        rows
+            )
+        })
     }
 
     #[doc = ""]
@@ -427,10 +432,8 @@ where
         &self,
         alarm_index_diff_details: &Vec<AlarmIndexDiffDetailInfo>,
     ) -> String {
-        let mut rows: String = String::new();
-
-        for alarm_diff_info in alarm_index_diff_details {
-            rows.push_str(&format!(
+        self.generate_table_rows(alarm_index_diff_details, |alarm_diff_info| {
+            format!(
                 r#"<tr>
                     <td style="border: 1px solid #ddd; padding: 12px; text-align: left; background-color: #fff;">{}</td>
                     <td style="border: 1px solid #ddd; padding: 12px; text-align: left; background-color: #fff;">{}</td>
@@ -445,10 +448,18 @@ where
                 alarm_diff_info.difference,
                 alarm_diff_info.difference_percent,
                 alarm_diff_info.timestamp
-            ));
-        }
+            )
+        })
+    }
 
-        rows
+    #[doc = "Helper function for creating common table rows"]
+    fn generate_table_rows<T, F>(&self, data: &Vec<T>, row_formatter: F) -> String
+    where
+        F: Fn(&T) -> String,
+    {
+        data.iter()
+            .map(|item| row_formatter(item))
+            .collect::<String>()
     }
 }
 

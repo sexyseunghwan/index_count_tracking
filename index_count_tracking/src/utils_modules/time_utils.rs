@@ -14,12 +14,9 @@ pub fn calc_time_window(dt: DateTime<Utc>, duration_secs: i64) -> DateTime<Utc> 
 
 #[doc = "Function to convert string timestamp to UTC data."]
 pub fn convert_utc_from_str(time_str: &str) -> anyhow::Result<DateTime<Utc>> {
-    
     let utc_time: DateTime<Utc> = match time_str.parse::<DateTime<Utc>>() {
         Ok(utc_time) => utc_time,
-        Err(e) => {
-            return Err(anyhow!("[convert_utc_from_str] {:?}", e))
-        }
+        Err(e) => return Err(anyhow!("[convert_utc_from_str] {:?}", e)),
     };
 
     Ok(utc_time)
