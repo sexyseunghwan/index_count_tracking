@@ -177,11 +177,12 @@ where
         &self,
         mon_index_name: &str,
         target_index_info_list: &IndexListConfig,
+        save_tick: u64
     ) -> anyhow::Result<()> {
 
         /* Schedule ticker */
-        let mut ticker: Interval = interval(Duration::from_secs(5));
-
+        let mut ticker: Interval = interval(Duration::from_secs(save_tick));
+        
         loop {
             ticker.tick().await;
 

@@ -1,7 +1,6 @@
 use crate::common::*;
 use crate::traits::service_traits::chart_service::*;
 use plotters::prelude::*;
-use std::path::Path;
 
 #[derive(Debug, Clone, new)]
 pub struct ChartServiceImpl;
@@ -50,7 +49,7 @@ impl ChartService for ChartServiceImpl {
         title: &str,
         x_labels: Vec<String>,
         y_data: Vec<i64>,
-        output_path: &Path,
+        output_path: &std::path::Path,
         x_label: &str,
         y_label: &str,
     ) -> anyhow::Result<()> {

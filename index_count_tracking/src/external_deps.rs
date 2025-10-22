@@ -20,3 +20,5 @@ pub use lettre::{
     message::{MultiPart, SinglePart},
     transport::smtp::authentication::Credentials,
 };
+
+pub use num_format::{Locale, ToFormattedString};

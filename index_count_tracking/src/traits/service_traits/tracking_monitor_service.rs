@@ -8,5 +8,6 @@ pub trait TrackingMonitorService {
         &self,
         mon_index_name: &str,
         target_index_info_list: &IndexListConfig,
+        save_tick: u64
     ) -> anyhow::Result<()>;
 }

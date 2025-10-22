@@ -9,7 +9,6 @@ pub struct AlarmIndexDetailInfo {
     pub start_index_cnt: usize,
     pub end_index_cnt: usize,
     pub difference: usize,
-    pub difference_percent: f64,
-    pub alarm_cnt: u64,
-    pub status: IndexStatus,
+    pub difference_percent: usize,
+    pub alarm_cnt: u64
 }

@@ -248,8 +248,7 @@ where
             };
 
             let difference: usize = filtered_start_cnt.abs_diff(filtered_end_cnt);
-            let difference_percent: f64 = (difference as f64 / filtered_start_cnt as f64) * 100.0;
-            let difference_percent_rounded: f64 = (difference_percent * 100.0).round() / 100.0;
+            let difference_percent: usize = ((difference as f64 / filtered_start_cnt as f64) * 100.0) as usize;
 
             let filtered_alarm_cnt: u64 = match alarm_report_infos
                 .buckets()
@@ -263,20 +262,13 @@ where
                 }
             };
 
-            let alaram_status: IndexStatus = if filtered_alarm_cnt > 0 {
-                IndexStatus::Abnormal
-            } else {
-                IndexStatus::Normal
-            };
-
             let alarm_index_detail: AlarmIndexDetailInfo = AlarmIndexDetailInfo::new(
                 index_name.to_string(),
                 filtered_start_cnt,
                 filtered_end_cnt,
                 difference,
-                difference_percent_rounded,
+                difference_percent,
                 filtered_alarm_cnt,
-                alaram_status,
             );
 
             alarm_index_details.push(alarm_index_detail);
@@ -309,8 +301,7 @@ where
             } else {
                 alert_index.prev_cnt
             }; // Defense code to prevent division by 0.
-            let difference_percent: f64 = (difference as f64 / divisor as f64) * 100.0;
-            let difference_percent_rounded: f64 = (difference_percent * 100.0).round() / 100.0;
+            let difference_percent: usize = ((difference as f64 / divisor as f64) * 100.0) as usize;
 
             let utc_time: DateTime<Utc> = convert_utc_from_str(&alert_index.timestamp)?;
             let convert_kor_time: DateTime<Local> = convert_local_from_utc(utc_time);
@@ -324,7 +315,7 @@ where
                 alert_index.prev_cnt,
                 alert_index.cnt,
                 difference,
-                difference_percent_rounded,
+                difference_percent,
                 convert_date_to_str(convert_kor_time, Local),
             );
 
@@ -368,16 +359,16 @@ where
         let html_content: String = template_content
             .replace("{{REPORT_TYPE}}", report_name)
             .replace("{{REPORT_DATE}}", &convert_date_to_str(report_date, Local))
-            .replace("{{TOTAL_INDICES}}", &index_list.index().len().to_string())
+            .replace("{{TOTAL_INDICES}}", &index_list.index().len().to_formatted_string(&Locale::en))
             .replace(
                 "{{TOTAL_DOCS_START}}",
-                &start_time_all_index_cnt.to_string(),
+                &start_time_all_index_cnt.to_formatted_string(&Locale::en),
             )
-            .replace("{{TOTAL_DOCS_END}}", &end_time_all_index_cnt.to_string())
-            .replace("{{TOTAL_CHANGE}}", &total_difference.to_string())
+            .replace("{{TOTAL_DOCS_END}}", &end_time_all_index_cnt.to_formatted_string(&Locale::en))
+            .replace("{{TOTAL_CHANGE}}", &total_difference.to_formatted_string(&Locale::en))
             .replace("{{CHANGE_STYLE}}", "")
-            .replace("{{INDICES_WITH_ALERTS}}", &alaram_index_cnt.to_string())
-            .replace("{{TOTAL_ALERTS}}", &total_alarm_cnt.to_string())
+            .replace("{{INDICES_WITH_ALERTS}}", &alaram_index_cnt.to_formatted_string(&Locale::en))
+            .replace("{{TOTAL_ALERTS}}", &total_alarm_cnt.to_formatted_string(&Locale::en))
             .replace(
                 "{{INDEX_ROWS}}",
                 &self.generate_index_detail_rows(&alarm_index_details),
@@ -396,10 +387,6 @@ where
         alarm_index_details: &[AlarmIndexDetailInfo],
     ) -> String {
         self.generate_table_rows(alarm_index_details, |alarm_index| {
-            let index_status: &str = match alarm_index.status() {
-                IndexStatus::Normal => "정상",
-                IndexStatus::Abnormal => "비정상",
-            };
 
             format!(
                 r#"<tr>
@@ -409,19 +396,17 @@ where
                     <td style="border: 1px solid #ddd; padding: 12px; text-align: left; background-color: #fff;">{}</td>
                     <td style="border: 1px solid #ddd; padding: 12px; text-align: left; background-color: #fff;">{} %</td>
                     <td style="border: 1px solid #ddd; padding: 12px; text-align: left; background-color: #fff;">{}</td>
-                    <td style="border: 1px solid #ddd; padding: 12px; text-align: left; background-color: #fff;">{}</td>
                 </tr>"#,
                 alarm_index.index_name(),
-                alarm_index.start_index_cnt,
-                alarm_index.end_index_cnt,
-                alarm_index.difference,
-                alarm_index.difference_percent,
-                alarm_index.alarm_cnt,
-                index_status
+                alarm_index.start_index_cnt.to_formatted_string(&Locale::en),
+                alarm_index.end_index_cnt.to_formatted_string(&Locale::en),
+                alarm_index.difference.to_formatted_string(&Locale::en),
+                alarm_index.difference_percent.to_formatted_string(&Locale::en),
+                alarm_index.alarm_cnt.to_formatted_string(&Locale::en),
             )
         })
     }
-
+    
     fn generate_index_diff_detail_rows(
         &self,
         alarm_index_diff_details: &[AlarmIndexDiffDetailInfo],
@@ -437,10 +422,10 @@ where
                     <td style="border: 1px solid #ddd; padding: 12px; text-align: left; background-color: #fff;">{}</td>
                 </tr>"#,
                 alarm_diff_info.index_name(),
-                alarm_diff_info.start_index_cnt,
-                alarm_diff_info.end_index_cnt,
-                alarm_diff_info.difference,
-                alarm_diff_info.difference_percent,
+                alarm_diff_info.start_index_cnt.to_formatted_string(&Locale::en),
+                alarm_diff_info.end_index_cnt.to_formatted_string(&Locale::en),
+                alarm_diff_info.difference.to_formatted_string(&Locale::en),
+                alarm_diff_info.difference_percent.to_formatted_string(&Locale::en),
                 alarm_diff_info.timestamp
             )
         })

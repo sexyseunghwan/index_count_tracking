@@ -42,8 +42,12 @@ where
         let alarm_index_name: Arc<str> =
             Arc::from(get_alarm_log_index_info().index_name().to_string());
 
+        /* Index document count save interval */
+        let save_tick: u64 = get_system_config_info().ticker_sec;
+
         /* 1. 모니터링 테스크 */
         let tracking_monitor_handle = Self::spawn_tracking_monitor_task(
+            save_tick,
             Arc::clone(&self.tracking_monitor_service),
             Arc::clone(&mon_index_name),
             Arc::clone(&target_index_info_list),
@@ -92,6 +96,7 @@ where
 
     #[doc = "모니터링 태스크를 별도의 tokio task로 spawn"]
     fn spawn_tracking_monitor_task(
+        save_tick: u64,
         service: Arc<T>,
         mon_index_name: Arc<str>,
         target_index_info_list: Arc<IndexListConfig>,
@@ -101,7 +106,7 @@ where
     {
         tokio::spawn(async move {
             match service
-                .tracking_monitor_loop(&mon_index_name, &target_index_info_list)
+                .tracking_monitor_loop(&mon_index_name, &target_index_info_list, save_tick)
                 .await
             {
                 Ok(_) => info!("[tracking_monitor_task] Completed successfully"),
@@ -109,7 +114,7 @@ where
             }
         })
     }
-
+    
     #[doc = "리포트 태스크를 별도의 tokio task로 spawn"]
     fn spawn_report_task(
         service: Arc<R>,

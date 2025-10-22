@@ -548,8 +548,8 @@ impl NotificationService for NotificationServiceImpl {
                 );
             }
         };
-
-        /* 병렬 실행 */
+        
+        /* Parallel execution. */
         tokio::join!(telegram, mail);
 
         Ok(())
