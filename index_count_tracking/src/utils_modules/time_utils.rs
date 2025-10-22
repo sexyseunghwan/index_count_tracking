@@ -1,6 +1,5 @@
 use crate::common::*;
 
-#[doc = ""]
 pub fn calc_struct_to_strkor(utc_time: &str) -> anyhow::Result<String> {
     let dt_utc: DateTime<Utc> = utc_time.parse::<DateTime<Utc>>()?;
     let dt_local: DateTime<Local> = dt_utc.with_timezone(&Local);
@@ -22,17 +21,14 @@ pub fn convert_utc_from_str(time_str: &str) -> anyhow::Result<DateTime<Utc>> {
     Ok(utc_time)
 }
 
-#[doc = ""]
 pub fn convert_utc_from_local(local_time: DateTime<Local>) -> DateTime<Utc> {
     local_time.with_timezone(&Utc)
 }
 
-#[doc = ""]
 pub fn convert_local_from_utc(utc_time: DateTime<Utc>) -> DateTime<Local> {
     utc_time.with_timezone(&Local)
 }
 
-#[doc = ""]
 pub fn convert_date_to_str<Tz, TzOut>(
     time: DateTime<Tz>,
     tz: TzOut, // 출력할 타임존 (Utc, Local, FixedOffset 등)

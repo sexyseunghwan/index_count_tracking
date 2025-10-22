@@ -1,5 +1,4 @@
 use crate::common::*;
-use crate::dto::alarm::alarm_image_info;
 use crate::env_configuration::env_config::*;
 use crate::model::index::{index_config::*, index_list_config::*};
 use crate::traits::service_traits::{
@@ -41,7 +40,7 @@ where
         local_time: DateTime<Local>,
         report_type: ReportType,
     ) -> anyhow::Result<()> {
-        /* 집계 이미지 경로 벡터 */
+        
         let mut alarm_image_infos: Vec<AlarmImageInfo> = Vec::new();
 
         let hour: i64 = get_days(report_type) * 24;
@@ -99,7 +98,7 @@ where
 
         let end_time_all_index_cnt: usize = end_time_all_index_info.iter().map(|x| x.cnt()).sum();
 
-        /* 총 변동량 -> |시작시점 총 문서 수 - 종료시점 총 문서 수| */
+        /* Total variation -> |Total number of documents at start - Total number of documents at end| */
         let total_difference: usize =
             self.calc_start_end_index_cnt(&start_time_all_index_info, &end_time_all_index_info);
 
@@ -108,10 +107,10 @@ where
             .get_index_name_aggregations(alarm_index_name, prev_hour_utc_time, utc_from_local)
             .await?;
 
-        /* 알람 발생 인덱스 개수 */
+        /* Number of alarm occurrence indices. */
         let alaram_index_cnt: u64 = alarm_report_infos.distinct_count_u64;
 
-        /* 총 알람 수 */
+        /* Total number of alarms */
         let total_alarm_cnt: u64 = alarm_report_infos.buckets().iter().map(|x| x.count).sum();
 
         /* Detailed information by index */
@@ -145,9 +144,9 @@ where
             alarm_index_diff_detilas,
         )?;
 
-        /* 이메일로 리포트를 보내줌 */
+        /* Send the report via email. */
         self.notification_service
-            .send_daily_report_email(&email_subject, &html_content, &alarm_image_infos)
+            .send_report_information_by_email(&email_subject, &html_content, &alarm_image_infos)
             .await?;
 
         Ok(())
@@ -200,11 +199,10 @@ where
         Ok(output_path)
     }
 
-    #[doc = ""]
     fn calc_start_end_index_cnt(
         &self,
-        start_time_all_index_cnt: &Vec<IndexCountAggResult>,
-        end_time_all_index_cnt: &Vec<IndexCountAggResult>,
+        start_time_all_index_cnt: &[IndexCountAggResult],
+        end_time_all_index_cnt: &[IndexCountAggResult],
     ) -> usize {
         let start_total_cnt: usize = start_time_all_index_cnt.iter().map(|x| x.cnt).sum();
         let end_total_cnt: usize = end_time_all_index_cnt.iter().map(|x| x.cnt).sum();
@@ -212,7 +210,6 @@ where
         start_total_cnt.abs_diff(end_total_cnt)
     }
 
-    #[doc = ""]
     fn generate_alarm_index_details(
         &self,
         index_list: &Vec<IndexConfig>,
@@ -288,7 +285,6 @@ where
         alarm_index_details
     }
 
-    #[doc = ""]
     async fn generate_alram_index_diff_details(
         &self,
         index_list: &Vec<IndexConfig>,
@@ -362,10 +358,10 @@ where
             })?;
 
         let report_name: &str = match report_type {
-            ReportType::OneDay => "일일",
-            ReportType::OneWeek => "주간",
-            ReportType::OneMonth => "월간",
-            ReportType::OneYear => "연간",
+            ReportType::Day => "일일",
+            ReportType::Week => "주간",
+            ReportType::Month => "월간",
+            ReportType::Year => "연간",
         };
 
         /* 템플릿 플레이스홀더 교체 */
@@ -397,13 +393,12 @@ where
     #[doc = "인덱스별 상세 정보 테이블 행 생성"]
     fn generate_index_detail_rows(
         &self,
-        alarm_index_details: &Vec<AlarmIndexDetailInfo>,
+        alarm_index_details: &[AlarmIndexDetailInfo],
     ) -> String {
         self.generate_table_rows(alarm_index_details, |alarm_index| {
             let index_status: &str = match alarm_index.status() {
                 IndexStatus::Normal => "정상",
                 IndexStatus::Abnormal => "비정상",
-                _ => "알수없음",
             };
 
             format!(
@@ -427,10 +422,9 @@ where
         })
     }
 
-    #[doc = ""]
     fn generate_index_diff_detail_rows(
         &self,
-        alarm_index_diff_details: &Vec<AlarmIndexDiffDetailInfo>,
+        alarm_index_diff_details: &[AlarmIndexDiffDetailInfo],
     ) -> String {
         self.generate_table_rows(alarm_index_diff_details, |alarm_diff_info| {
             format!(
@@ -453,12 +447,12 @@ where
     }
 
     #[doc = "Helper function for creating common table rows"]
-    fn generate_table_rows<T, F>(&self, data: &Vec<T>, row_formatter: F) -> String
+    fn generate_table_rows<T, F>(&self, data: &[T], row_formatter: F) -> String
     where
         F: Fn(&T) -> String,
     {
         data.iter()
-            .map(|item| row_formatter(item))
+            .map(row_formatter)
             .collect::<String>()
     }
 }
@@ -470,7 +464,7 @@ where
     C: ChartService,
     N: NotificationService,
 {
-    #[doc = "리포트 서비스를 제공해주는 함수"]
+    #[doc = "Function that provides a report service"]
     async fn report_loop(
         &self,
         mon_index_name: &str,
@@ -478,27 +472,24 @@ where
         target_index_info_list: &IndexListConfig,
         report_type: ReportType,
     ) -> anyhow::Result<()> {
-        /* 리포트 타입이 어떤 타입인지 확인 */
+        
         let report_config: &ReportConfig = match report_type {
-            ReportType::OneDay => get_daily_report_config_info(),
-            ReportType::OneWeek => get_weekly_report_config_info(),
-            ReportType::OneMonth => get_monthly_report_config_info(),
-            ReportType::OneYear => get_yearly_report_config_info(),
+            ReportType::Day => get_daily_report_config_info(),
+            ReportType::Week => get_weekly_report_config_info(),
+            ReportType::Month => get_monthly_report_config_info(),
+            ReportType::Year => get_yearly_report_config_info(),
         };
 
-        /* 해당 타입 보고용 활성화 여부 */
         if !report_config.enabled {
             info!(
                 "[MainController->daily_report_loop] Daily report is disabled. Skipping daily report scheduler."
             );
 
-            /* 무한 대기 (데일리 보고용 기능 비활성화) */
             loop {
                 tokio::time::sleep(std::time::Duration::from_secs(3600)).await;
             }
         }
 
-        /* 크론 스케줄 파싱 */
         let schedule: cron::Schedule = cron::Schedule::from_str(&report_config.cron_schedule)
             .map_err(|e| {
                 anyhow!(
@@ -514,10 +505,9 @@ where
         );
 
         loop {
-            /* 보고용 스케쥴은 한국시간 기준으로 한다 GMT+9 */
+            /* The reporting schedule is based on Korean time - GMT+9 */
             let now_local: DateTime<Local> = chrono::Local::now();
 
-            /* 다음 실행 시간 계산 */
             let next_run: DateTime<Local> = schedule
                 .upcoming(now_local.timezone())
                 .next()
@@ -545,7 +535,7 @@ where
             let wake: Instant = Instant::now() + duration_until_next_run;
             sleep_until(wake).await;
 
-            /* 메일 보내주는 시각이 되면 함수가 동작함 */
+            /* The function runs when it's time to send the report email. */
             self.report_index_cnt_task(
                 mon_index_name,
                 alarm_index_name,

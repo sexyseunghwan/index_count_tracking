@@ -20,7 +20,7 @@ impl<T, R> MainController<T, R>
 where
     T: TrackingMonitorService + Send + Sync + 'static,
     R: ReportService + Send + Sync + 'static,
-{
+{   
     #[doc = r#"
         메인 루프를 실행하는 핵심 함수로, 30초 간격으로 인덱스 모니터링 작업을 반복 수행한다.
 
@@ -55,7 +55,7 @@ where
             Arc::clone(&mon_index_name),
             Arc::clone(&alarm_index_name),
             Arc::clone(&target_index_info_list),
-            ReportType::OneDay,
+            ReportType::Day,
             "daily_report_task",
         );
 
@@ -65,7 +65,7 @@ where
             Arc::clone(&mon_index_name),
             Arc::clone(&alarm_index_name),
             Arc::clone(&target_index_info_list),
-            ReportType::OneWeek,
+            ReportType::Week,
             "weekly_report_task",
         );
 
@@ -75,7 +75,7 @@ where
             Arc::clone(&mon_index_name),
             Arc::clone(&alarm_index_name),
             Arc::clone(&target_index_info_list),
-            ReportType::OneMonth,
+            ReportType::Month,
             "monthly_report_task",
         );
 

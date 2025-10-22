@@ -1,4 +1,3 @@
-use chrono_tz::Etc::UTC;
 
 use crate::common::*;
 
@@ -77,7 +76,6 @@ impl QueryServiceImpl {
         Ok(results)
     }
 
-    #[doc = ""]
     fn get_aggregation_metric_value<T>(
         &self,
         response_body: &Value,
@@ -96,27 +94,24 @@ impl QueryServiceImpl {
             ))?;
 
         // serde_json::Number로 안전하게 접근
-        let number: Option<f64> = num
+        let _number: Option<f64> = num
             .as_f64()
             .or_else(|| num.as_u64().map(|u| u as f64))
             .or_else(|| num.as_i64().map(|i| i as f64));
 
         // 먼저 정수로 읽을 수 있으면 정수 우선 변환 → 안 되면 f64로
-        if let Some(u) = num.as_u64() {
-            if let Some(v) = T::from_u64(u) {
+        if let Some(u) = num.as_u64()
+            && let Some(v) = T::from_u64(u) {
                 return Ok(v);
             }
-        }
-        if let Some(i) = num.as_i64() {
-            if let Some(v) = T::from_i64(i) {
+        if let Some(i) = num.as_i64()
+            && let Some(v) = T::from_i64(i) {
                 return Ok(v);
             }
-        }
-        if let Some(f) = num.as_f64() {
-            if let Some(v) = T::from_f64(f) {
+        if let Some(f) = num.as_f64()
+            && let Some(v) = T::from_f64(f) {
                 return Ok(v);
             }
-        }
 
         Err(anyhow!(
             "[QueryServiceImpl->get_aggregation_metric_value] 'aggregations.{}.value' is not a supported numeric for target type",
@@ -397,7 +392,6 @@ impl QueryServiceImpl {
         if avg > 0.0 { (diff / avg) * 100.0 } else { 0.0 }
     }
 
-    #[doc = ""]
     async fn fetch_index_cnt_infos<'a>(
         &self,
         mon_index_name: &str,
@@ -419,7 +413,10 @@ impl QueryServiceImpl {
                     "filter": [
                         {
                             "range": {
-                                "timestamp": { "gte": convert_date_to_str(prev_timestamp_utc, Utc), "lte": convert_date_to_str(cur_timestamp_utc, Utc) }
+                                "timestamp": { 
+                                    "gte": convert_date_to_str(prev_timestamp_utc, Utc), 
+                                    "lte": convert_date_to_str(cur_timestamp_utc, Utc) 
+                                }
                             }
                         },
                         {
@@ -442,7 +439,6 @@ impl QueryServiceImpl {
         self.get_query_result_vec::<AlertIndexFormat, AlertIndex>(&response_body)
     }
 
-    #[doc = ""]
     async fn get_all_indicies_count_by_time<'a>(
         &self,
         mon_index_name: &str,
@@ -615,10 +611,11 @@ impl QueryService for QueryServiceImpl {
     ) -> anyhow::Result<LogIndexResult> {
         let index_name: &str = index_config.index_name();
         let allowable: f64 = *index_config.allowable_fluctuation_range();
-        let agg_term: i64 = *index_config.agg_term_sec();
+        let agg_term: i64 = *index_config.agg_term_sec(); /* The specific period for which monitoring will be conducted. */ 
 
         let prev_timestamp_utc: DateTime<Utc> = calc_time_window(cur_timestamp_utc, agg_term);
 
+        /* `Maximum` and `Minimum` values of index documents within a specific period  */
         let (min_val, max_val) = self
             .fetch_min_max_values(
                 mon_index_name,
@@ -628,13 +625,13 @@ impl QueryService for QueryServiceImpl {
             )
             .await?;
 
-        let fluctuation_val: f64 = Self::calculate_fluctuation(min_val, max_val);
-        let one_decimal: f64 = (fluctuation_val * 100.0).round() / 100.0; /* 소수점 첫째 자리까지만 표현 */
-
+        let flunct_val: f64 = Self::calculate_fluctuation(min_val, max_val);
+        let flunct_val_one_decimal: f64 = (flunct_val * 100.0).round() / 100.0;
+        
         let mut result: LogIndexResult =
-            LogIndexResult::new(index_name.to_string(), false, None, one_decimal, 0);
-
-        if fluctuation_val >= allowable {
+            LogIndexResult::new(index_name.to_string(), false, None, flunct_val_one_decimal, 0);
+        
+        if flunct_val >= allowable {
             let sorts: Vec<SortSpec<'_>> = vec![SortSpec {
                 field: "timestamp",
                 order: SortOrder::Desc,
@@ -672,7 +669,6 @@ impl QueryService for QueryServiceImpl {
         Ok(result)
     }
 
-    #[doc = ""]
     async fn get_report_infos_from_log_index(
         &self,
         mon_index_name: &str,
@@ -752,7 +748,6 @@ impl QueryService for QueryServiceImpl {
         Ok(results)
     }
 
-    #[doc = ""]
     async fn get_end_time_all_indicies_count(
         &self,
         mon_index_name: &str,

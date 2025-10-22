@@ -1,5 +1,5 @@
 use crate::common::*;
-use std::path::PathBuf;
+use std::path::Path;
 
 #[async_trait]
 pub trait ChartService: Send + Sync {
@@ -18,7 +18,7 @@ pub trait ChartService: Send + Sync {
         title: &str,
         x_labels: Vec<String>,
         y_data: Vec<i64>,
-        output_path: &PathBuf,
+        output_path: &Path,
         x_label: &str,
         y_label: &str,
     ) -> anyhow::Result<()>;

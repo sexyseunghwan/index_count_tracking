@@ -3,10 +3,9 @@ Author      : Seunghwan Shin
 Create date : 2025-09-24
 Description : 색인되고 있는 인덱스 개수의 현황을 파악하고 변화율이 높으면 알람을 보내주는 프로그램
 
-History     : 2025-09-24 Seunghwan Shin       # [v.1.0.0] first create
-              2025-10-00 Seunghwan Shin       # [v.2.0.0] 정기적으로 특정 시간에 지난 24시간 공고수 추이 리포트를 메일로 보내주는 기능 추가
+History     : 2025-09-24 Seunghwan Shin       # [v.1.0.0] first create.
+              2025-10-00 Seunghwan Shin       # [v.2.0.0] Added the ablilty to send reports regularly.
 */
-
 mod common;
 mod external_deps;
 mod prelude;
@@ -40,14 +39,13 @@ mod enums;
 
 #[tokio::main]
 async fn main() {
-    /* 전역로거 설정 및 초기 설정 */
+    /* Global logger settings and initial setup */
     dotenv().ok();
     set_global_logger();
 
     info!("Index Tracking program start!");
 
     /* Elasticsearch connection */
-    /* 모니터링 대상 Elasticsearch cluster conneciton */
     let target_es_conn: Arc<EsRepositoryImpl> = Arc::new(
         EsRepositoryImpl::new(get_elastic_config_info()).unwrap_or_else(|e| {
             let err_msg: &str = "[main] An issue occurred while initializing target_es_conn.";
@@ -73,7 +71,6 @@ async fn main() {
             panic!("{:?}", e);
         }));
 
-    /* 트래킹 모니터링 서비스 */
     let tracking_monitor_service: TrackingServiceImpl<QueryServiceImpl, NotificationServiceImpl> =
         TrackingServiceImpl::new(
             QueryServiceImpl::new(Arc::clone(&target_es_conn)),
@@ -81,7 +78,6 @@ async fn main() {
             Arc::clone(&notification_service),
         );
 
-    /* 차트 서비스 */
     let chart_service: ChartServiceImpl = ChartServiceImpl::new();
     let report_service: ReportServiceImpl<
         QueryServiceImpl,
@@ -101,8 +97,10 @@ async fn main() {
     /* ==================================================== */
     /* ==================================================== */
     /* ==================================================== */
+    
     main_controller.main_task().await.unwrap_or_else(|e| {
         error!("{:?}", e);
         panic!("{:?}", e);
     });
+
 }

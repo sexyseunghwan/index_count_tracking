@@ -26,7 +26,7 @@ where
     Q: QueryService + Sync + Send,
     N: NotificationService + Sync + Send,
 {
-    #[doc = "인덱스 문서 개수 정보 색인 해주는 함수"]
+    #[doc = "Function that indexes the number if index documents"]
     async fn save_index_cnt_infos(
         &self,
         index_list: &IndexListConfig,
@@ -69,9 +69,9 @@ where
                 }
             };
 
+            /* Caculate the absolute value */
             let cur_prev_diff: usize = doc_cnt.abs_diff(prev_doc_cnt.cnt);
 
-            /* 모니터링 인덱스에 해당 인덱스의 문서수를 색인 */
             let alert_index: AlertIndex = AlertIndex::new(
                 index_name.to_string(),
                 doc_cnt,
@@ -79,8 +79,7 @@ where
                 cur_prev_diff,
                 convert_date_to_str(cur_utc_time, Utc),
             );
-
-            /* 해당 정보를 모니터링 클러스터에 색인 */
+            
             self.mon_query_service
                 .post_log_index(mon_index_name, &alert_index)
                 .await?;
@@ -89,8 +88,8 @@ where
         Ok(())
     }
 
-    #[doc = "인덱스 문서 개수 검증"]
-    async fn verify_index_cnt(
+    #[doc = "Function that detects and returns index informations whose number of documents fluctuated beyond a threshold within a specific period."]
+    async fn detect_abnormal_index_changes(
         &self,
         mon_index_name: &str,
         target_index_info_list: &IndexListConfig,
@@ -111,14 +110,17 @@ where
 
         Ok(log_index_results)
     }
-
-    #[doc = "인덱스 문서 개수 이상 상황 알람 발송"]
+    
+    #[doc = "Function that sends current index information via alerts."]
     async fn alert_index_status(&self, log_index_res: &[LogIndexResult]) -> anyhow::Result<()> {
         info!(
             "Sending index alert for {} problematic indices",
             log_index_res.len()
         );
 
+        /*
+            It sends alert via email and Telegram.
+        */
         match self
             .notification_service
             .send_index_alert_message(log_index_res)
@@ -138,8 +140,8 @@ where
 
         Ok(())
     }
-
-    #[doc = "알람 이력을 기록해주는 함수"]
+    
+    #[doc = "Function that records alarm history"]
     async fn logging_alarm_history_infos(
         &self,
         index_doc_verification: &Vec<LogIndexResult>,
@@ -170,19 +172,20 @@ where
     Q: QueryService + Sync + Send,
     N: NotificationService + Sync + Send,
 {
-    #[doc = "특정 인덱스의 문서 개수를 계속해서 모니터링 해주는 함수"]
+    #[doc = "Function that continuosly monitors the number of documents in a specific index."]
     async fn tracking_monitor_loop(
         &self,
         mon_index_name: &str,
         target_index_info_list: &IndexListConfig,
     ) -> anyhow::Result<()> {
-        /* 30초에 한번씩 스케쥴 */
+
+        /* Schedule ticker */
         let mut ticker: Interval = interval(Duration::from_secs(5));
 
         loop {
             ticker.tick().await;
 
-            /* 1. 인덱스 문서 개수 정보 저장 */
+            /* 1. Store index document count information. */
             if let Err(e) = self
                 .save_index_cnt_infos(target_index_info_list, mon_index_name)
                 .await
@@ -196,9 +199,12 @@ where
 
             let cur_timestamp_utc: DateTime<Utc> = Utc::now();
 
-            /* 2. 인덱스 문서 개수 검증 */
+            /* 
+                2. Verify the number if index documents
+                - To send a notification when there is an abnormality in the rate of change of the number of indexes. 
+            */
             let index_doc_verification: Vec<LogIndexResult> = match self
-                .verify_index_cnt(mon_index_name, target_index_info_list, cur_timestamp_utc)
+                .detect_abnormal_index_changes(mon_index_name, target_index_info_list, cur_timestamp_utc)
                 .await
             {
                 Ok(results) => results,
@@ -211,8 +217,9 @@ where
                 }
             };
 
-            if index_doc_verification.len() > 0 {
-                /* 3. 알람 히스토리 보관을 위해서 로깅해주는 로직 */
+            if !index_doc_verification.is_empty() {
+
+                /* 3. Save alarm information to keep alarm history */
                 if let Err(e) = self
                     .logging_alarm_history_infos(&index_doc_verification, cur_timestamp_utc)
                     .await
@@ -220,7 +227,7 @@ where
                     error!("[MainController->monitoring_loop] {:?}", e);
                 }
 
-                /* 4. 검증 결과를 바탕으로 알람을 보내주는 로직 */
+                /* 4. It sends an alert based on the verification results. */
                 if let Err(e) = self.alert_index_status(&index_doc_verification).await {
                     error!(
                         "[MainController->monitoring_loop] Failed to send alert: {:?}",

@@ -8,7 +8,7 @@ pub trait NotificationService: Send + Sync {
         &self,
         log_index_results: &[LogIndexResult],
     ) -> Result<(), anyhow::Error>;
-    async fn send_daily_report_email(
+    async fn send_report_information_by_email(
         &self,
         email_subject: &str,
         html_content: &str,

@@ -1,7 +1,7 @@
 use crate::common::*;
 use crate::traits::service_traits::chart_service::*;
 use plotters::prelude::*;
-use std::path::PathBuf;
+use std::path::Path;
 
 #[derive(Debug, Clone, new)]
 pub struct ChartServiceImpl;
@@ -45,13 +45,12 @@ impl ChartServiceImpl {
 
 #[async_trait]
 impl ChartService for ChartServiceImpl {
-    #[doc = ""]
     async fn generate_line_chart(
         &self,
         title: &str,
         x_labels: Vec<String>,
         y_data: Vec<i64>,
-        output_path: &PathBuf,
+        output_path: &Path,
         x_label: &str,
         y_label: &str,
     ) -> anyhow::Result<()> {

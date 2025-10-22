@@ -29,6 +29,10 @@ pub struct NotificationServiceImpl {
 }
 
 impl NotificationServiceImpl {
+    /* HTML 스타일 상수 */
+    const TABLE_CELL_STYLE: &'static str = "border: 1px solid #ddd; padding: 12px; text-align: left; vertical-align: top; background-color: #fff;";
+    const TABLE_CELL_STYLE_RED: &'static str = "border: 1px solid #ddd; padding: 12px; text-align: left; vertical-align: top; background-color: #fff; color: red;";
+
     #[doc = r#"
         NotificationServiceImpl 구조체의 생성자 함수.
 
@@ -122,78 +126,6 @@ impl NotificationServiceImpl {
     }
 
     #[doc = r#"
-        개별 수신자에게 HTML 형식의 이메일과 차트 이미지 첨부파일을 발송하는 비동기 함수.
-
-        1. 이메일 메시지 객체를 생성하고 발신자/수신자/제목/본문을 설정
-        2. 첨부된 차트 이미지 파일들을 읽어서 이메일에 첨부
-        3. SMTP 서버 인증 정보를 바탕으로 Credentials 객체 생성
-        4. `AsyncSmtpTransport`를 통해 SMTP 서버와 연결 설정
-        5. 구성된 메일러를 통해 실제 이메일 발송 시도
-        6. 발송 성공 시 수신자 이메일 주소 반환, 실패 시 에러 반환
-
-        # Arguments
-        * `smtp_config` - SMTP 서버 설정 정보 (서버명, 인증정보 포함)
-        * `email_id` - 수신자 이메일 주소
-        * `subject` - 이메일 제목
-        * `html_content` - HTML 형식의 이메일 본문
-        * `attachments` - 첨부할 파일 경로 목록
-
-        # Returns
-        * `Ok(String)` - 발송 성공 시 수신자 이메일 주소
-        * `Err(anyhow::Error)` - 이메일 구성 또는 발송 실패 시
-    "#]
-    #[allow(dead_code)]
-    async fn send_message_to_receiver_with_attachments(
-        &self,
-        smtp_config: &SmtpConfig,
-        email_id: &str,
-        subject: &str,
-        html_content: &str,
-        attachments: &[std::path::PathBuf],
-    ) -> Result<String, anyhow::Error> {
-        use lettre::message::{Attachment, header};
-
-        let mut multipart = MultiPart::mixed().multipart(
-            MultiPart::alternative().singlepart(SinglePart::html(html_content.to_string())),
-        );
-
-        // Add attachments
-        for attachment_path in attachments {
-            let file_content = tokio::fs::read(attachment_path).await?;
-            let filename = attachment_path
-                .file_name()
-                .and_then(|n| n.to_str())
-                .unwrap_or("chart.png");
-
-            let attachment = Attachment::new(filename.to_string())
-                .body(file_content, header::ContentType::parse("image/png")?);
-
-            multipart = multipart.singlepart(attachment);
-        }
-
-        let email: Message = Message::builder()
-            .from(smtp_config.credential_id.parse()?)
-            .to(email_id.parse()?)
-            .subject(subject)
-            .multipart(multipart)?;
-
-        let creds: Credentials = Credentials::new(
-            smtp_config.credential_id().to_string(),
-            smtp_config.credential_pw().to_string(),
-        );
-
-        let mailer: AsyncSmtpTransport<lettre::Tokio1Executor> =
-            AsyncSmtpTransport::<lettre::Tokio1Executor>::relay(smtp_config.smtp_name().as_str())?
-                .credentials(creds)
-                .build();
-
-        match mailer.send(email).await {
-            Ok(_) => Ok(email_id.to_string()),
-            Err(e) => Err(anyhow!("{:?} : Failed to send email to {} ", e, email_id)),
-        }
-    }
-
-    #[doc = r#"
         SMTP 서버를 통해 수신자 목록에게 이메일을 일괄 발송하는 함수.
 
         1. 설정된 SMTP 정보와 수신자 목록을 가져온다
@@ -215,10 +147,8 @@ impl NotificationServiceImpl {
         &self,
         email_subject: &str,
         html_content: &str,
+        receiver_email_list: &Vec<ReceiverEmail>
     ) -> anyhow::Result<()> {
-        /* receiver email list */
-        let receiver_email_list: &Vec<ReceiverEmail> = &self.receiver_email_list().emails;
-
         let smtp_config: &SmtpConfig = get_smtp_config_info();
 
         if smtp_config.async_process_yn {
@@ -251,80 +181,8 @@ impl NotificationServiceImpl {
                 self.send_message_to_receiver_html(
                     smtp_config,
                     email_id.as_str(),
-                    "[Elasticsearch] Index removed list",
-                    html_content,
-                )
-                .await?;
-            }
-        }
-
-        Ok(())
-    }
-
-    #[doc = r#"
-        SMTP 서버를 통해 수신자 목록에게 첨부파일이 포함된 이메일을 일괄 발송하는 함수.
-
-        1. 설정된 SMTP 정보와 수신자 목록을 가져온다
-        2. `async_process_yn` 설정에 따라 처리 방식 결정:
-           - true: 비동기 병렬 처리로 모든 이메일을 동시 발송 (성능 우선)
-           - false: 순차적 동기 처리로 하나씩 발송 (안정성 우선)
-        3. 각 수신자별로 `send_message_to_receiver_with_attachments` 호출하여 개별 이메일 발송
-        4. 발송 결과를 로깅하되, 개별 실패가 전체 프로세스를 중단하지 않음
-
-        # Arguments
-        * `email_subject` - 이메일 제목
-        * `html_content` - HTML 형식의 이메일 본문
-        * `attachments` - 첨부할 파일 경로 목록
-
-        # Returns
-        * `anyhow::Result<()>` - 전체 프로세스 성공/실패 여부
-    "#]
-    #[allow(dead_code)]
-    async fn send_message_to_receivers_smtp_with_attachments(
-        &self,
-        email_subject: &str,
-        html_content: &str,
-        attachments: &[std::path::PathBuf],
-    ) -> anyhow::Result<()> {
-        /* receiver email list */
-        let receiver_email_list: &Vec<ReceiverEmail> = &self.receiver_email_list().emails;
-
-        let smtp_config: &SmtpConfig = get_smtp_config_info();
-
-        if smtp_config.async_process_yn {
-            /* ASYNC TASK */
-            let tasks = receiver_email_list.iter().map(|receiver| {
-                let email_id: &String = receiver.email_id();
-                self.send_message_to_receiver_with_attachments(
-                    smtp_config,
-                    email_id.as_str(),
                     email_subject,
                     html_content,
-                    attachments,
-                )
-            });
-
-            let results: Vec<Result<String, anyhow::Error>> = join_all(tasks).await;
-
-            for result in results {
-                match result {
-                    Ok(succ_email_id) => info!("Email sent successfully: {}", succ_email_id),
-                    Err(e) => error!(
-                        "[Error][send_message_to_receivers_with_attachments()] Failed to send email: {:?}",
-                        e
-                    ),
-                }
-            }
-        } else {
-            /* Not Async */
-            for receiver in receiver_email_list {
-                let email_id: &String = receiver.email_id();
-                self.send_message_to_receiver_with_attachments(
-                    smtp_config,
-                    email_id.as_str(),
-                    email_subject,
-                    html_content,
-                    attachments,
                 )
                 .await?;
             }
@@ -393,7 +251,7 @@ impl NotificationServiceImpl {
 
         Ok(())
     }
-
+    
     #[doc = r#"
         인덱스 문서 개수 알람을 이메일로 발송하는 함수.
 
@@ -414,19 +272,44 @@ impl NotificationServiceImpl {
         log_index_results: &[LogIndexResult],
     ) -> anyhow::Result<()> {
         let elastic_config: &'static ElasticServerConfig = get_mon_elastic_config_info();
-        let receiver_email_list: &Vec<ReceiverEmail> = &self.receiver_email_list().emails;
-
+        
         let email_subject: String =
             String::from("[Elasticsearch] Index Document Count Change Detected");
 
         let html_content: String =
             self.generate_index_alert_html(log_index_results, elastic_config)?;
 
+        self.send_alert_infos_to_admin(&email_subject, &html_content).await?;
+
+        Ok(())
+    }
+
+    #[doc = r#"
+        관리자에게 알람 정보를 이메일로 발송하는 함수.
+
+        현재 SMTP를 통한 직접 발송 방식을 사용하며,
+        SQL Server stored procedure를 통한 imailer 방식은 주석 처리되어 있음.
+
+        # Arguments
+        * `email_subject` - 이메일 제목
+        * `html_content` - HTML 형식의 이메일 본문
+
+        # Returns
+        * `anyhow::Result<()>` - 발송 성공 여부
+    "#]
+    async fn send_alert_infos_to_admin(
+        &self,
+        email_subject: &str,
+        html_content: &str        
+    ) -> anyhow::Result<()> {
+
+        let receiver_email_list: &Vec<ReceiverEmail> = &self.receiver_email_list().emails;
+        
         /* SMTP 버전 -> 온라인망 사용용*/
-        self.send_message_to_receivers_smtp(&email_subject, &html_content)
+        self.send_message_to_receivers_smtp(email_subject, html_content, receiver_email_list)
             .await?;
 
-        /* SP 버전 */
+        /* Imailer 사용버전 - SP 사용 버전 */   
         // let sql_conn: Arc<SqlServerRepositoryImpl> = get_sqlserver_repo();
 
         // for receiver in receiver_email_list {
@@ -445,6 +328,7 @@ impl NotificationServiceImpl {
 
         Ok(())
     }
+
 
     #[doc = r#"
         인덱스 알람 정보를 HTML 형식의 이메일 템플릿으로 변환하는 함수.
@@ -516,15 +400,19 @@ impl NotificationServiceImpl {
             if let Some(alert_formats) = log_result.alert_index_format() {
                 rows.push_str(&format!(
                     r#"<tr>
-                        <td style="border: 1px solid #ddd; padding: 12px; text-align: left; vertical-align: top; background-color: #fff;">{}</td>
-                        <td style="border: 1px solid #ddd; padding: 12px; text-align: left; vertical-align: top; background-color: #fff;">{}</td>
-                        <td style="border: 1px solid #ddd; padding: 12px; text-align: left; vertical-align: top; background-color: #fff; color: red;">{}%</td>
-                        <td style="border: 1px solid #ddd; padding: 12px; text-align: left; vertical-align: top; background-color: #fff;">{}</td>
-                
-                    </tr>"#, 
+                        <td style="{}">{}</td>
+                        <td style="{}">{}</td>
+                        <td style="{}">{}%</td>
+                        <td style="{}">{}</td>
+
+                    </tr>"#,
+                    Self::TABLE_CELL_STYLE,
                     log_result.index_name(),
+                    Self::TABLE_CELL_STYLE,
                     log_result.cur_cnt(),
+                    Self::TABLE_CELL_STYLE_RED,
                     log_result.fluctuation_val(),
+                    Self::TABLE_CELL_STYLE,
                     self.generate_history_table_html(alert_formats)
                 ));
             }
@@ -553,7 +441,7 @@ impl NotificationServiceImpl {
         * `String` - 히스토리 정보가 포함된 HTML div 컨테이너
     "#]
     fn generate_history_table_html(&self, alert_indexes: &[AlertIndex]) -> String {
-        let mut inner_div: String = String::from(r#""#);
+        let mut inner_div = String::new();
 
         for alert_index in alert_indexes {
             inner_div.push_str(&format!(
@@ -563,16 +451,14 @@ impl NotificationServiceImpl {
             ));
         }
 
-        let history_divs: String = String::from(&format!(
+        format!(
             r#"
                 <div style="color: #555; font-size: 14px; line-height: 1.5;">
                 {}
                 </div>
             "#,
             inner_div
-        ));
-
-        history_divs
+        )
     }
 
     #[doc = r#"
@@ -590,12 +476,20 @@ impl NotificationServiceImpl {
     ) -> anyhow::Result<String> {
         use base64::{Engine as _, engine::general_purpose};
 
-        let mut img_tags: String = String::new();
+        let mut img_tags = String::new();
 
         for img_info in alarm_image_infos {
-            let img_data: Vec<u8> = tokio::fs::read(img_info.pic_path.clone()).await?;
+            let img_data: Vec<u8> = tokio::fs::read(&img_info.pic_path)
+                .await
+                .map_err(|e| {
+                    anyhow!(
+                        "[NotificationServiceImpl->convert_images_to_base64_html] Failed to read image: {:?}",
+                        e
+                    )
+                })?;
+            
             let base64_data: String = general_purpose::STANDARD.encode(&img_data);
-
+            
             img_tags.push_str(&format!(
                 r#"<div style="margin-bottom: 20px;">
                     <h3 style="color: #555; margin-bottom: 10px;">{}</h3>
@@ -607,50 +501,6 @@ impl NotificationServiceImpl {
         }
 
         Ok(img_tags)
-    }
-
-    #[doc = r#"
-        일일 리포트 이메일을 발송하는 함수.
-
-        1. 수신자 목록과 SMTP 설정을 가져온다
-        2. 이미지를 Base64로 인코딩하여 HTML에 직접 포함
-        3. `send_message_to_receivers_smtp`를 통해 HTML만 발송 (첨부파일 없음)
-        4. 각 수신자별로 개별적으로 이메일을 발송하며, 실패 시에도 다른 수신자에게는 계속 발송
-
-        # Arguments
-        * `email_subject` - 이메일 제목
-        * `html_content` - HTML 형식의 이메일 본문
-        * `chart_img_path_list` - HTML에 포함할 차트 이미지 파일 경로 목록
-
-        # Returns
-        * `anyhow::Result<()>` - 발송 프로세스 완료 여부
-    "#]
-    async fn send_report_email_impl(
-        &self,
-        email_subject: &str,
-        html_content: &str,
-        alarm_image_infos: &[AlarmImageInfo],
-    ) -> anyhow::Result<()> {
-        info!(
-            "Sending daily report email with {} embedded chart images",
-            alarm_image_infos.len()
-        );
-
-        /* 이미지를 Base64로 변환 */
-        let base64_images: String = self
-            .convert_images_to_base64_html(alarm_image_infos)
-            .await?;
-
-        /* HTML에 이미지 삽입 */
-        let final_html: String = html_content.replace("{{CHART_IMAGES}}", &base64_images);
-
-        /* SMTP 버전 - 첨부파일 없이 HTML만 전송 */
-        self.send_message_to_receivers_smtp(email_subject, &final_html)
-            .await?;
-
-        info!("Daily report email sent successfully");
-
-        Ok(())
     }
 }
 
@@ -699,16 +549,50 @@ impl NotificationService for NotificationServiceImpl {
             }
         };
 
+        /* 병렬 실행 */
+        tokio::join!(telegram, mail);
+
         Ok(())
     }
 
-    async fn send_daily_report_email(
+    #[doc = r#"
+        일일 리포트 정보를 이메일로 발송하는 함수.
+
+        차트 이미지를 Base64로 인코딩하여 HTML에 임베드한 후
+        관리자에게 이메일로 발송한다.
+
+        # Arguments
+        * `email_subject` - 이메일 제목
+        * `html_content` - HTML 템플릿 ({{CHART_IMAGES}} 플레이스홀더 포함)
+        * `chart_img_path_list` - 첨부할 차트 이미지 파일 경로 목록
+
+        # Returns
+        * `anyhow::Result<()>` - 발송 성공 여부
+    "#]
+    async fn send_report_information_by_email(
         &self,
         email_subject: &str,
         html_content: &str,
         chart_img_path_list: &[AlarmImageInfo],
     ) -> Result<(), anyhow::Error> {
-        self.send_report_email_impl(email_subject, html_content, chart_img_path_list)
-            .await
+        info!(
+            "Sending daily report email with {} embedded chart images",
+            chart_img_path_list.len()
+        );
+
+        /* Convert the image to Base64 */
+        let base64_images: String = self
+            .convert_images_to_base64_html(chart_img_path_list)
+            .await?;
+
+        /* Inserting images into */
+        let final_html: String = html_content.replace("{{CHART_IMAGES}}", &base64_images);
+
+        self.send_alert_infos_to_admin(email_subject, &final_html)
+            .await?;
+
+        info!("Daily report email sent successfully");
+        
+        Ok(())
     }
 }

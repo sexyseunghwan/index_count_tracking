@@ -5,7 +5,6 @@ use crate::model::index::{alert_index::*, index_config::*};
 use crate::dto::{
     alarm::{alarm_log_history_index::*, alarm_report_infos::*},
     index_count_agg_result::*,
-    index_name_count::*,
     log_index_result::*,
 };
 
