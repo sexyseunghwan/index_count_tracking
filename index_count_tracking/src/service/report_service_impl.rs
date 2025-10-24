@@ -47,11 +47,14 @@ where
         let utc_from_local: DateTime<Utc> = convert_utc_from_local(local_time);
         let prev_hour_utc_time: DateTime<Utc> = minus_h(utc_from_local, hour);
 
+        let mon_index_alias: &str = &format!("{}*", mon_index_name);
+        let alarm_index_alias: &str = &format!("{}*", alarm_index_name);
+
         for index in target_index_info_list.index() {
             /* Gecerate Report graph ,*/
             let graph_path: PathBuf = match self
                 .generate_index_history_graph(
-                    mon_index_name,
+                    mon_index_alias,
                     index.index_name(),
                     local_time,
                     prev_local_time,
@@ -83,7 +86,7 @@ where
         /* Total document information at start time. */
         let start_time_all_index_info: Vec<IndexCountAggResult> = self
             .query_service
-            .get_start_time_all_indicies_count(mon_index_name, prev_hour_utc_time, utc_from_local)
+            .get_start_time_all_indicies_count(mon_index_alias, prev_hour_utc_time, utc_from_local)
             .await?;
 
         let start_time_all_index_cnt: usize =
@@ -92,7 +95,7 @@ where
         /* Total document information at end time. */
         let end_time_all_index_info: Vec<IndexCountAggResult> = self
             .query_service
-            .get_end_time_all_indicies_count(mon_index_name, prev_hour_utc_time, utc_from_local)
+            .get_end_time_all_indicies_count(mon_index_alias, prev_hour_utc_time, utc_from_local)
             .await?;
 
         let end_time_all_index_cnt: usize = end_time_all_index_info.iter().map(|x| x.cnt()).sum();
@@ -103,7 +106,7 @@ where
 
         let alarm_report_infos: AlarmReportInfos = self
             .query_service
-            .get_index_name_aggregations(alarm_index_name, prev_hour_utc_time, utc_from_local)
+            .get_index_name_aggregations(alarm_index_alias, prev_hour_utc_time, utc_from_local)
             .await?;
 
         /* Number of alarm occurrence indices. */
@@ -124,7 +127,7 @@ where
         let alarm_index_diff_detilas: Vec<AlarmIndexDiffDetailInfo> = self
             .generate_alram_index_diff_details(
                 target_index_info_list.index(),
-                mon_index_name,
+                mon_index_alias,
                 prev_hour_utc_time,
                 utc_from_local,
             )

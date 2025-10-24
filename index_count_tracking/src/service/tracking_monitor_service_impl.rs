@@ -31,6 +31,7 @@ where
         mon_index_name: &str,
     ) -> anyhow::Result<()> {
         let cur_utc_time: DateTime<Utc> = Utc::now();
+        let save_mon_index: &str = &format!("{}{}", mon_index_name, convert_data_to_str_index(cur_utc_time, Utc));
 
         for index_config in index_list.index() {
             let index_name: &str = index_config.index_name();
@@ -55,7 +56,7 @@ where
             );
 
             self.mon_query_service
-                .post_log_index(mon_index_name, &alert_index)
+                .post_log_index(save_mon_index, &alert_index)
                 .await?;
         }
 
@@ -71,10 +72,12 @@ where
     ) -> anyhow::Result<Vec<LogIndexResult>> {
         let mut log_index_results: Vec<LogIndexResult> = Vec::new();
 
+        let save_mon_index: &str = &format!("{}{}", mon_index_name, convert_data_to_str_index(cur_timestamp_utc, Utc));
+
         for index_config in target_index_info_list.index() {
             let log_index_res: LogIndexResult = self
                 .mon_query_service
-                .get_alert_infos_from_log_index(mon_index_name, index_config, cur_timestamp_utc)
+                .get_alert_infos_from_log_index(save_mon_index, index_config, cur_timestamp_utc)
                 .await?;
 
             if log_index_res.alert_yn {
