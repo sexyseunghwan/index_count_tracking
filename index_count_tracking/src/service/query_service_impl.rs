@@ -1,4 +1,3 @@
-
 use crate::common::*;
 
 use crate::dto::alarm::alarm_report_infos::AlarmReportInfos;
@@ -93,25 +92,26 @@ impl QueryServiceImpl {
                 agg_name
             ))?;
 
-        // serde_json::Number로 안전하게 접근
         let _number: Option<f64> = num
             .as_f64()
             .or_else(|| num.as_u64().map(|u| u as f64))
             .or_else(|| num.as_i64().map(|i| i as f64));
 
-        // 먼저 정수로 읽을 수 있으면 정수 우선 변환 → 안 되면 f64로
-        if let Some(u) = num.as_u64()
-            && let Some(v) = T::from_u64(u) {
+        if let Some(u) = num.as_u64() {
+            if let Some(v) = T::from_u64(u) {
                 return Ok(v);
             }
-        if let Some(i) = num.as_i64()
-            && let Some(v) = T::from_i64(i) {
+        }
+        if let Some(i) = num.as_i64() {
+            if let Some(v) = T::from_i64(i) {
                 return Ok(v);
             }
-        if let Some(f) = num.as_f64()
-            && let Some(v) = T::from_f64(f) {
+        }
+        if let Some(f) = num.as_f64() {
+            if let Some(v) = T::from_f64(f) {
                 return Ok(v);
             }
+        }
 
         Err(anyhow!(
             "[QueryServiceImpl->get_aggregation_metric_value] 'aggregations.{}.value' is not a supported numeric for target type",
@@ -413,9 +413,9 @@ impl QueryServiceImpl {
                     "filter": [
                         {
                             "range": {
-                                "timestamp": { 
-                                    "gte": convert_date_to_str(prev_timestamp_utc, Utc), 
-                                    "lte": convert_date_to_str(cur_timestamp_utc, Utc) 
+                                "timestamp": {
+                                    "gte": convert_date_to_str(prev_timestamp_utc, Utc),
+                                    "lte": convert_date_to_str(cur_timestamp_utc, Utc)
                                 }
                             }
                         },
@@ -611,7 +611,7 @@ impl QueryService for QueryServiceImpl {
     ) -> anyhow::Result<LogIndexResult> {
         let index_name: &str = index_config.index_name();
         let allowable: f64 = *index_config.allowable_fluctuation_range();
-        let agg_term: i64 = *index_config.agg_term_sec(); /* The specific period for which monitoring will be conducted. */ 
+        let agg_term: i64 = *index_config.agg_term_sec(); /* The specific period for which monitoring will be conducted. */
 
         let prev_timestamp_utc: DateTime<Utc> = calc_time_window(cur_timestamp_utc, agg_term);
 
@@ -627,10 +627,15 @@ impl QueryService for QueryServiceImpl {
 
         let flunct_val: f64 = Self::calculate_fluctuation(min_val, max_val);
         let flunct_val_one_decimal: f64 = (flunct_val * 100.0).round() / 100.0;
-        
-        let mut result: LogIndexResult =
-            LogIndexResult::new(index_name.to_string(), false, None, flunct_val_one_decimal, 0);
-        
+
+        let mut result: LogIndexResult = LogIndexResult::new(
+            index_name.to_string(),
+            false,
+            None,
+            flunct_val_one_decimal,
+            0,
+        );
+
         if flunct_val >= allowable {
             let sorts: Vec<SortSpec<'_>> = vec![SortSpec {
                 field: "timestamp",
@@ -813,46 +818,46 @@ impl QueryService for QueryServiceImpl {
         Ok(AlarmReportInfos::new(buckets, distinct_count_u64))
     }
 
-    #[doc = "Function that returns the most recent index tracking information."]
-    async fn get_latest_index_count_infos(
-        &self,
-        mon_index_name: &str,
-        param_index_name: &str,
-    ) -> anyhow::Result<AlertIndex> {
-        let search_query: Value = json!({
-            "size": 1,
-            "track_total_hits": false,
-            "query": {
-                "bool": {
-                    "filter": [
-                        { "term": { "index_name.keyword": param_index_name }}
-                    ]
-                }
-            },
-            "sort": [
-                { "timestamp": "desc" }
-            ]
-        });
+    // #[doc = "Function that returns the most recent index tracking information."]
+    // async fn get_latest_index_count_infos(
+    //     &self,
+    //     mon_index_name: &str,
+    //     param_index_name: &str,
+    // ) -> anyhow::Result<AlertIndex> {
+    //     let search_query: Value = json!({
+    //         "size": 1,
+    //         "track_total_hits": false,
+    //         "query": {
+    //             "bool": {
+    //                 "filter": [
+    //                     { "term": { "index_name.keyword": param_index_name }}
+    //                 ]
+    //             }
+    //         },
+    //         "sort": [
+    //             { "timestamp": "desc" }
+    //         ]
+    //     });
 
-        let response_body: Value = self
-            .es_conn
-            .get_search_query(&search_query, mon_index_name)
-            .await?;
+    //     let response_body: Value = self
+    //         .es_conn
+    //         .get_search_query(&search_query, mon_index_name)
+    //         .await?;
 
-        let result: AlertIndexFormat =
-            self.get_query_result::<AlertIndexFormat, AlertIndex>(&response_body)?;
+    //     let result: AlertIndexFormat =
+    //         self.get_query_result::<AlertIndexFormat, AlertIndex>(&response_body)?;
 
-        Ok(result.alert_index)
-    }
+    //     Ok(result.alert_index)
+    // }
 
-    #[doc = "Retrieves the maximum variation in document count for a given index within a specified time period."]
-    async fn fetch_max_doc_count_variation(
+    #[doc = ""]
+    async fn fetch_max_min_doc_count_value(
         &self,
         mon_index_name: &str,
         index_name: &str,
         start_time: DateTime<Utc>,
         end_time: DateTime<Utc>,
-    ) -> anyhow::Result<AlertIndex> {
+    ) -> anyhow::Result<(f64, f64)> {
         let search_query: Value = json!({
             "size": 1,
             "track_total_hits": false,
@@ -875,9 +880,10 @@ impl QueryService for QueryServiceImpl {
                     ]
                 }
             },
-            "sort": [
-                { "cur_prev_diff": { "order": "desc"} }
-            ]
+            "aggs": {
+                "cnt_max": { "max": { "field": "cnt" } },
+                "cnt_min": { "min": { "field": "cnt" } }
+            }
         });
 
         let response_body: Value = self
@@ -885,11 +891,9 @@ impl QueryService for QueryServiceImpl {
             .get_search_query(&search_query, mon_index_name)
             .await?;
 
-        let alert_index_format: AlertIndexFormat =
-            self.get_query_result::<AlertIndexFormat, AlertIndex>(&response_body)?;
-
-        let alert_index: AlertIndex = alert_index_format.alert_index;
-
-        Ok(alert_index)
+        let cnt_max: f64 = self.get_aggregation_metric_value::<f64>(&response_body, "cnt_max")?;
+        let cnt_min: f64 = self.get_aggregation_metric_value::<f64>(&response_body, "cnt_min")?;
+        
+        Ok((cnt_min, cnt_max))
     }
 }

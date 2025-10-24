@@ -22,24 +22,6 @@ impl ChartServiceImpl {
 
         (y_min, y_max)
     }
-
-    #[doc = "Helper function to format large numbers with comma separators"]
-    fn format_number(n: i64) -> String {
-        let s: String = n.to_string();
-        let mut result: String = String::new();
-        let mut count: i32 = 0;
-
-        for c in s.chars().rev() {
-            if count == 3 {
-                result.push(',');
-                count = 0;
-            }
-            result.push(c);
-            count += 1;
-        }
-
-        result.chars().rev().collect()
-    }
 }
 
 #[async_trait]

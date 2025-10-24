@@ -16,7 +16,7 @@ use crate::dto::{
     index_count_agg_result::*,
 };
 
-use crate::enums::{index_status::*, report_type::*};
+use crate::enums::report_type::*;
 
 #[derive(Debug, new)]
 pub struct ReportServiceImpl<Q: QueryService, C: ChartService, N: NotificationService> {
@@ -40,7 +40,6 @@ where
         local_time: DateTime<Local>,
         report_type: ReportType,
     ) -> anyhow::Result<()> {
-        
         let mut alarm_image_infos: Vec<AlarmImageInfo> = Vec::new();
 
         let hour: i64 = get_days(report_type) * 24;
@@ -93,7 +92,7 @@ where
         /* Total document information at end time. */
         let end_time_all_index_info: Vec<IndexCountAggResult> = self
             .query_service
-            .get_start_time_all_indicies_count(mon_index_name, prev_hour_utc_time, utc_from_local)
+            .get_end_time_all_indicies_count(mon_index_name, prev_hour_utc_time, utc_from_local)
             .await?;
 
         let end_time_all_index_cnt: usize = end_time_all_index_info.iter().map(|x| x.cnt()).sum();
@@ -133,6 +132,7 @@ where
 
         let html_content: String = self.generate_daily_report_html(
             target_index_info_list,
+            prev_local_time,
             local_time,
             report_type,
             start_time_all_index_cnt,
@@ -229,7 +229,7 @@ where
                 Some(item) => item.cnt,
                 None => {
                     error!(
-                        "Index not found in start_time_all_index_info: {}",
+                        "[ReportServiceImpl->generate_alarm_index_details] Index not found in start_time_all_index_info: {}",
                         index_name
                     );
                     continue;
@@ -242,13 +242,16 @@ where
             {
                 Some(item) => item.cnt,
                 None => {
-                    error!("Index not found in end_time_all_index_info: {}", index_name);
+                    error!(
+                        "[ReportServiceImpl->generate_alarm_index_details] Index not found in end_time_all_index_info: {}",
+                        index_name
+                    );
                     continue;
                 }
             };
 
             let difference: usize = filtered_start_cnt.abs_diff(filtered_end_cnt);
-            let difference_percent: usize = ((difference as f64 / filtered_start_cnt as f64) * 100.0) as usize;
+            let difference_percent: f64 = (difference as f64 / filtered_start_cnt as f64) * 100.0;
 
             let filtered_alarm_cnt: u64 = match alarm_report_infos
                 .buckets()
@@ -257,8 +260,11 @@ where
             {
                 Some(item) => item.count,
                 None => {
-                    error!("Index not found in filtered_alarm_cnt: {}", index_name);
-                    continue;
+                    warn!(
+                        "[ReportServiceImpl->generate_alarm_index_details] Index not found in filtered_alarm_cnt: {}",
+                        index_name
+                    );
+                    0
                 }
             };
 
@@ -289,34 +295,27 @@ where
         for index in index_list {
             let index_name: &str = index.index_name();
 
-            /* Retrieve the maximum document count variation within a specific period */
-            let alert_index: AlertIndex = self
+            /* Computes the min and max document counts over a given period. */
+            let (min_value, max_value) = self
                 .query_service
-                .fetch_max_doc_count_variation(mon_index_name, index_name, start_time, end_time)
+                .fetch_max_min_doc_count_value(mon_index_name, index_name, start_time, end_time)
                 .await?;
 
-            let difference: usize = alert_index.cur_prev_diff;
-            let divisor: usize = if alert_index.prev_cnt == 0 {
-                1
+            let divisor: f64 = if min_value == 0.0 {
+                1.0
             } else {
-                alert_index.prev_cnt
-            }; // Defense code to prevent division by 0.
-            let difference_percent: usize = ((difference as f64 / divisor as f64) * 100.0) as usize;
+                min_value
+            };
 
-            let utc_time: DateTime<Utc> = convert_utc_from_str(&alert_index.timestamp)?;
-            let convert_kor_time: DateTime<Local> = convert_local_from_utc(utc_time);
+            let diff_cnt: f64 = (max_value - min_value).abs();
+            let diff_per: f64 = (diff_cnt / divisor ) * 100.0;
 
-            /*  ***WARN***
-                Timestamp must be stored in Korea time, Not UTC time.
-                ***WARN***
-            */
             let alarm_index_diff_info: AlarmIndexDiffDetailInfo = AlarmIndexDiffDetailInfo::new(
                 index_name.to_string(),
-                alert_index.prev_cnt,
-                alert_index.cnt,
-                difference,
-                difference_percent,
-                convert_date_to_str(convert_kor_time, Local),
+                max_value as u64,
+                min_value as u64,
+                diff_cnt as u64,
+                diff_per,
             );
 
             alarm_index_diff_details.push(alarm_index_diff_info);
@@ -325,11 +324,12 @@ where
         Ok(alarm_index_diff_details)
     }
 
-    #[doc = "일일 리포트용 HTML 생성 (템플릿 기반)"]
+    #[doc = "리포트용 HTML 생성 (템플릿 기반)"]
     fn generate_daily_report_html(
         &self,
         index_list: &IndexListConfig,
-        report_date: DateTime<Local>,
+        start_local_time: DateTime<Local>,
+        end_local_time: DateTime<Local>,
         report_type: ReportType,
         start_time_all_index_cnt: usize,
         end_time_all_index_cnt: usize,
@@ -355,20 +355,45 @@ where
             ReportType::Year => "연간",
         };
 
-        /* 템플릿 플레이스홀더 교체 */
+        let agg_interval: String = format!(
+            "{} ~ {}",
+            convert_data_to_str_human(start_local_time, Local),
+            convert_data_to_str_human(end_local_time, Local)
+        );
+
+        /* Replacing template placeholders */
         let html_content: String = template_content
             .replace("{{REPORT_TYPE}}", report_name)
-            .replace("{{REPORT_DATE}}", &convert_date_to_str(report_date, Local))
-            .replace("{{TOTAL_INDICES}}", &index_list.index().len().to_formatted_string(&Locale::en))
+            .replace("{{REPORT_INTERVAL}}", &agg_interval)
+            .replace(
+                "{{REPORT_DATE}}",
+                &convert_data_to_str_human(end_local_time, Local),
+            )
+            .replace(
+                "{{TOTAL_INDICES}}",
+                &index_list.index().len().to_formatted_string(&Locale::en),
+            )
             .replace(
                 "{{TOTAL_DOCS_START}}",
                 &start_time_all_index_cnt.to_formatted_string(&Locale::en),
             )
-            .replace("{{TOTAL_DOCS_END}}", &end_time_all_index_cnt.to_formatted_string(&Locale::en))
-            .replace("{{TOTAL_CHANGE}}", &total_difference.to_formatted_string(&Locale::en))
+            .replace(
+                "{{TOTAL_DOCS_END}}",
+                &end_time_all_index_cnt.to_formatted_string(&Locale::en),
+            )
+            .replace(
+                "{{TOTAL_CHANGE}}",
+                &total_difference.to_formatted_string(&Locale::en),
+            )
             .replace("{{CHANGE_STYLE}}", "")
-            .replace("{{INDICES_WITH_ALERTS}}", &alaram_index_cnt.to_formatted_string(&Locale::en))
-            .replace("{{TOTAL_ALERTS}}", &total_alarm_cnt.to_formatted_string(&Locale::en))
+            .replace(
+                "{{INDICES_WITH_ALERTS}}",
+                &alaram_index_cnt.to_formatted_string(&Locale::en),
+            )
+            .replace(
+                "{{TOTAL_ALERTS}}",
+                &total_alarm_cnt.to_formatted_string(&Locale::en),
+            )
             .replace(
                 "{{INDEX_ROWS}}",
                 &self.generate_index_detail_rows(&alarm_index_details),
@@ -382,10 +407,7 @@ where
     }
 
     #[doc = "인덱스별 상세 정보 테이블 행 생성"]
-    fn generate_index_detail_rows(
-        &self,
-        alarm_index_details: &[AlarmIndexDetailInfo],
-    ) -> String {
+    fn generate_index_detail_rows(&self, alarm_index_details: &[AlarmIndexDetailInfo]) -> String {
         self.generate_table_rows(alarm_index_details, |alarm_index| {
 
             format!(
@@ -394,19 +416,19 @@ where
                     <td style="border: 1px solid #ddd; padding: 12px; text-align: left; background-color: #fff;">{}</td>
                     <td style="border: 1px solid #ddd; padding: 12px; text-align: left; background-color: #fff;">{}</td>
                     <td style="border: 1px solid #ddd; padding: 12px; text-align: left; background-color: #fff;">{}</td>
-                    <td style="border: 1px solid #ddd; padding: 12px; text-align: left; background-color: #fff;">{} %</td>
+                    <td style="border: 1px solid #ddd; padding: 12px; text-align: left; background-color: #fff;">{}</td>
                     <td style="border: 1px solid #ddd; padding: 12px; text-align: left; background-color: #fff;">{}</td>
                 </tr>"#,
                 alarm_index.index_name(),
                 alarm_index.start_index_cnt.to_formatted_string(&Locale::en),
                 alarm_index.end_index_cnt.to_formatted_string(&Locale::en),
                 alarm_index.difference.to_formatted_string(&Locale::en),
-                alarm_index.difference_percent.to_formatted_string(&Locale::en),
+                format!("{:.2}%", alarm_index.difference_percent),
                 alarm_index.alarm_cnt.to_formatted_string(&Locale::en),
             )
         })
     }
-    
+
     fn generate_index_diff_detail_rows(
         &self,
         alarm_index_diff_details: &[AlarmIndexDiffDetailInfo],
@@ -418,15 +440,13 @@ where
                     <td style="border: 1px solid #ddd; padding: 12px; text-align: left; background-color: #fff;">{}</td>
                     <td style="border: 1px solid #ddd; padding: 12px; text-align: left; background-color: #fff;">{}</td>
                     <td style="border: 1px solid #ddd; padding: 12px; text-align: left; background-color: #fff;">{}</td>
-                    <td style="border: 1px solid #ddd; padding: 12px; text-align: left; background-color: #fff;">{} %</td>
                     <td style="border: 1px solid #ddd; padding: 12px; text-align: left; background-color: #fff;">{}</td>
                 </tr>"#,
                 alarm_diff_info.index_name(),
-                alarm_diff_info.start_index_cnt.to_formatted_string(&Locale::en),
-                alarm_diff_info.end_index_cnt.to_formatted_string(&Locale::en),
+                alarm_diff_info.min_index_cnt.to_formatted_string(&Locale::en),
+                alarm_diff_info.max_index_cnt.to_formatted_string(&Locale::en),
                 alarm_diff_info.difference.to_formatted_string(&Locale::en),
-                alarm_diff_info.difference_percent.to_formatted_string(&Locale::en),
-                alarm_diff_info.timestamp
+                format!("{:.2}%", alarm_diff_info.difference_percent)
             )
         })
     }
@@ -436,9 +456,7 @@ where
     where
         F: Fn(&T) -> String,
     {
-        data.iter()
-            .map(row_formatter)
-            .collect::<String>()
+        data.iter().map(row_formatter).collect::<String>()
     }
 }
 
@@ -457,7 +475,6 @@ where
         target_index_info_list: &IndexListConfig,
         report_type: ReportType,
     ) -> anyhow::Result<()> {
-        
         let report_config: &ReportConfig = match report_type {
             ReportType::Day => get_daily_report_config_info(),
             ReportType::Week => get_weekly_report_config_info(),

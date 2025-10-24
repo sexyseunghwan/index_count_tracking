@@ -20,7 +20,7 @@ impl<T, R> MainController<T, R>
 where
     T: TrackingMonitorService + Send + Sync + 'static,
     R: ReportService + Send + Sync + 'static,
-{   
+{
     #[doc = r#"
         메인 루프를 실행하는 핵심 함수로, 30초 간격으로 인덱스 모니터링 작업을 반복 수행한다.
 
@@ -114,7 +114,7 @@ where
             }
         })
     }
-    
+
     #[doc = "리포트 태스크를 별도의 tokio task로 spawn"]
     fn spawn_report_task(
         service: Arc<R>,

@@ -1,4 +1,6 @@
-pub use std::{env, fmt::Display, fs, io::Write, path::PathBuf, path::Path, str::FromStr, sync::Arc};
+pub use std::{
+    env, fmt::Display, fs, io::Write, path::Path, path::PathBuf, str::FromStr, sync::Arc,
+};
 
 pub use tokio::time::{Duration, Instant, Interval, interval, sleep, sleep_until};
 
@@ -8,6 +10,6 @@ pub use derive_new::new;
 pub use dotenv::dotenv;
 pub use futures::{StreamExt, future::join_all};
 pub use getset::{Getters, Setters};
-pub use log::{error, info};
+pub use log::{error, info, warn};
 pub use serde::{Deserialize, Serialize, de::DeserializeOwned};
 pub use serde_json::{Value, json};

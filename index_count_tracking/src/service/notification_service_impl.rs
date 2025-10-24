@@ -8,19 +8,16 @@ use crate::model::{
     index::alert_index::*,
 };
 
-use crate::traits::repository_traits::telegram_repository::*;
+use crate::traits::repository_traits::{sqlserver_repository::*, telegram_repository::*};
 use crate::traits::service_traits::notification_service::*;
 
-use crate::repository::telegram_repository_impl::*;
+use crate::repository::{sqlserver_repository_impl::*, telegram_repository_impl::*};
 
 use crate::utils_modules::io_utils::*;
 
 use crate::env_configuration::env_config::*;
 
-use crate::dto::{
-    log_index_result::*,
-    alarm::alarm_image_info::*
-};
+use crate::dto::{alarm::alarm_image_info::*, log_index_result::*};
 
 #[derive(Debug, Getters)]
 #[getset(get = "pub")]
@@ -147,7 +144,7 @@ impl NotificationServiceImpl {
         &self,
         email_subject: &str,
         html_content: &str,
-        receiver_email_list: &Vec<ReceiverEmail>
+        receiver_email_list: &Vec<ReceiverEmail>,
     ) -> anyhow::Result<()> {
         let smtp_config: &SmtpConfig = get_smtp_config_info();
 
@@ -251,7 +248,7 @@ impl NotificationServiceImpl {
 
         Ok(())
     }
-    
+
     #[doc = r#"
         인덱스 문서 개수 알람을 이메일로 발송하는 함수.
 
@@ -272,14 +269,15 @@ impl NotificationServiceImpl {
         log_index_results: &[LogIndexResult],
     ) -> anyhow::Result<()> {
         let elastic_config: &'static ElasticServerConfig = get_mon_elastic_config_info();
-        
+
         let email_subject: String =
             String::from("[Elasticsearch] Index Document Count Change Detected");
 
         let html_content: String =
             self.generate_index_alert_html(log_index_results, elastic_config)?;
 
-        self.send_alert_infos_to_admin(&email_subject, &html_content).await?;
+        self.send_alert_infos_to_admin(&email_subject, &html_content)
+            .await?;
 
         Ok(())
     }
@@ -300,35 +298,40 @@ impl NotificationServiceImpl {
     async fn send_alert_infos_to_admin(
         &self,
         email_subject: &str,
-        html_content: &str        
+        html_content: &str,
     ) -> anyhow::Result<()> {
-
         let receiver_email_list: &Vec<ReceiverEmail> = &self.receiver_email_list().emails;
-        
+
         /* SMTP 버전 -> 온라인망 사용용*/
-        self.send_message_to_receivers_smtp(email_subject, html_content, receiver_email_list)
-            .await?;
+        // self.send_message_to_receivers_smtp(email_subject, html_content, receiver_email_list)
+        //     .await?;
 
-        /* Imailer 사용버전 - SP 사용 버전 */   
-        // let sql_conn: Arc<SqlServerRepositoryImpl> = get_sqlserver_repo();
+        /* Imailer 사용버전 - SP 사용 버전 */
+        let sql_conn: Arc<SqlServerRepositoryImpl> = get_sqlserver_repo();
 
-        // for receiver in receiver_email_list {
-        //     match sql_conn
-        //         .execute_imailer_procedure(receiver.email_id(), &email_subject, &html_content)
-        //         .await
-        //     {
-        //         Ok(_) => {
-        //             info!("Successfully sent index alert mail to {}", receiver.email_id());
-        //         }
-        //         Err(e) => {
-        //             error!("[ERROR][NotificationServiceImpl->send_email_index_alert] Failed to send mail to {} : {:?}", receiver.email_id(), e);
-        //         }
-        //     }
-        // }
+        for receiver in receiver_email_list {
+            match sql_conn
+                .execute_imailer_procedure(receiver.email_id(), &email_subject, &html_content)
+                .await
+            {
+                Ok(_) => {
+                    info!(
+                        "Successfully sent index alert mail to {}",
+                        receiver.email_id()
+                    );
+                }
+                Err(e) => {
+                    error!(
+                        "[ERROR][NotificationServiceImpl->send_email_index_alert] Failed to send mail to {} : {:?}",
+                        receiver.email_id(),
+                        e
+                    );
+                }
+            }
+        }
 
         Ok(())
     }
-
 
     #[doc = r#"
         인덱스 알람 정보를 HTML 형식의 이메일 템플릿으로 변환하는 함수.
@@ -487,9 +490,9 @@ impl NotificationServiceImpl {
                         e
                     )
                 })?;
-            
+
             let base64_data: String = general_purpose::STANDARD.encode(&img_data);
-            
+
             img_tags.push_str(&format!(
                 r#"<div style="margin-bottom: 20px;">
                     <h3 style="color: #555; margin-bottom: 10px;">{}</h3>
@@ -548,7 +551,7 @@ impl NotificationService for NotificationServiceImpl {
                 );
             }
         };
-        
+
         /* Parallel execution. */
         tokio::join!(telegram, mail);
 
@@ -592,7 +595,7 @@ impl NotificationService for NotificationServiceImpl {
             .await?;
 
         info!("Daily report email sent successfully");
-        
+
         Ok(())
     }
 }

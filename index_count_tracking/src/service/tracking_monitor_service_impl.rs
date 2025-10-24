@@ -1,5 +1,3 @@
-use chrono_tz::Etc::UTC;
-
 use crate::common::*;
 
 use crate::traits::service_traits::{
@@ -50,36 +48,12 @@ where
                 }
             };
 
-            /* Indexes the previous document count to simplify future change-rate cacluations. */
-            let prev_doc_cnt: AlertIndex = match self
-                .mon_query_service
-                .get_latest_index_count_infos(mon_index_name, index_name)
-                .await
-            {
-                Ok(prev_doc_cnt) => prev_doc_cnt,
-                Err(e) => {
-                    error!("[TrackingServiceImpl->save_index_cnt_infos]{:?}", e);
-                    AlertIndex::new(
-                        index_name.to_string(),
-                        0,
-                        0,
-                        0,
-                        convert_date_to_str(cur_utc_time, UTC),
-                    )
-                }
-            };
-
-            /* Caculate the absolute value */
-            let cur_prev_diff: usize = doc_cnt.abs_diff(prev_doc_cnt.cnt);
-
             let alert_index: AlertIndex = AlertIndex::new(
                 index_name.to_string(),
                 doc_cnt,
-                prev_doc_cnt.cnt,
-                cur_prev_diff,
                 convert_date_to_str(cur_utc_time, Utc),
             );
-            
+
             self.mon_query_service
                 .post_log_index(mon_index_name, &alert_index)
                 .await?;
@@ -110,7 +84,7 @@ where
 
         Ok(log_index_results)
     }
-    
+
     #[doc = "Function that sends current index information via alerts."]
     async fn alert_index_status(&self, log_index_res: &[LogIndexResult]) -> anyhow::Result<()> {
         info!(
@@ -140,7 +114,7 @@ where
 
         Ok(())
     }
-    
+
     #[doc = "Function that records alarm history"]
     async fn logging_alarm_history_infos(
         &self,
@@ -177,12 +151,11 @@ where
         &self,
         mon_index_name: &str,
         target_index_info_list: &IndexListConfig,
-        save_tick: u64
+        save_tick: u64,
     ) -> anyhow::Result<()> {
-
         /* Schedule ticker */
         let mut ticker: Interval = interval(Duration::from_secs(save_tick));
-        
+
         loop {
             ticker.tick().await;
 
@@ -200,12 +173,16 @@ where
 
             let cur_timestamp_utc: DateTime<Utc> = Utc::now();
 
-            /* 
+            /*
                 2. Verify the number if index documents
-                - To send a notification when there is an abnormality in the rate of change of the number of indexes. 
+                - To send a notification when there is an abnormality in the rate of change of the number of indexes.
             */
             let index_doc_verification: Vec<LogIndexResult> = match self
-                .detect_abnormal_index_changes(mon_index_name, target_index_info_list, cur_timestamp_utc)
+                .detect_abnormal_index_changes(
+                    mon_index_name,
+                    target_index_info_list,
+                    cur_timestamp_utc,
+                )
                 .await
             {
                 Ok(results) => results,
@@ -219,7 +196,6 @@ where
             };
 
             if !index_doc_verification.is_empty() {
-
                 /* 3. Save alarm information to keep alarm history */
                 if let Err(e) = self
                     .logging_alarm_history_infos(&index_doc_verification, cur_timestamp_utc)

@@ -52,16 +52,16 @@ pub trait QueryService {
         start_time: DateTime<Utc>,
         end_time: DateTime<Utc>,
     ) -> anyhow::Result<AlarmReportInfos>;
-    async fn get_latest_index_count_infos(
-        &self,
-        mon_index_name: &str,
-        param_index_name: &str,
-    ) -> anyhow::Result<AlertIndex>;
-    async fn fetch_max_doc_count_variation(
+    // async fn get_latest_index_count_infos(
+    //     &self,
+    //     mon_index_name: &str,
+    //     param_index_name: &str,
+    // ) -> anyhow::Result<AlertIndex>;
+    async fn fetch_max_min_doc_count_value(
         &self,
         mon_index_name: &str,
         index_name: &str,
         start_time: DateTime<Utc>,
         end_time: DateTime<Utc>,
-    ) -> anyhow::Result<AlertIndex>;
+    ) -> anyhow::Result<(f64, f64)>;
 }

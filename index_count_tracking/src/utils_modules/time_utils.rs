@@ -31,7 +31,7 @@ pub fn convert_local_from_utc(utc_time: DateTime<Utc>) -> DateTime<Local> {
 
 pub fn convert_date_to_str<Tz, TzOut>(
     time: DateTime<Tz>,
-    tz: TzOut, // 출력할 타임존 (Utc, Local, FixedOffset 등)
+    tz: TzOut, // Timezone (Utc, Local, FixedOffset ...)
 ) -> String
 where
     Tz: TimeZone,
@@ -41,6 +41,18 @@ where
 {
     time.with_timezone(&tz)
         .format("%Y-%m-%dT%H:%M:%SZ")
+        .to_string()
+}
+
+pub fn convert_data_to_str_human<Tz, TzOut>(time: DateTime<Tz>, tz: TzOut) -> String
+where
+    Tz: TimeZone,
+    Tz::Offset: Display,
+    TzOut: TimeZone,
+    TzOut::Offset: Display,
+{
+    time.with_timezone(&tz)
+        .format("%Y.%m.%d %H:%M:%S")
         .to_string()
 }
 

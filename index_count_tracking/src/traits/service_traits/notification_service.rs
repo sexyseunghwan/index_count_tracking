@@ -1,6 +1,6 @@
 use crate::common::*;
 
-use crate::dto::{log_index_result::*, alarm::alarm_image_info::*};
+use crate::dto::{alarm::alarm_image_info::*, log_index_result::*};
 
 #[async_trait]
 pub trait NotificationService: Send + Sync {
@@ -12,6 +12,6 @@ pub trait NotificationService: Send + Sync {
         &self,
         email_subject: &str,
         html_content: &str,
-        alarm_image_infos: &[AlarmImageInfo]
+        alarm_image_infos: &[AlarmImageInfo],
     ) -> Result<(), anyhow::Error>;
 }

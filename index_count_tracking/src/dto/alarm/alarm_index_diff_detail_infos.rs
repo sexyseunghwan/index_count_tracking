@@ -4,9 +4,8 @@ use crate::common::*;
 #[getset(get = "pub")]
 pub struct AlarmIndexDiffDetailInfo {
     pub index_name: String,
-    pub start_index_cnt: usize,
-    pub end_index_cnt: usize,
-    pub difference: usize,
-    pub difference_percent: usize,
-    pub timestamp: String,
+    pub max_index_cnt: u64,
+    pub min_index_cnt: u64,
+    pub difference: u64,
+    pub difference_percent: f64,
 }
